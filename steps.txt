@@ -34,7 +34,7 @@ docker run -d \
   --name ollama \
   -p 11434:11434 \
   -v ollama:/root/.ollama \
-  ollama/ollama
+  ollama/ollama:0.9.6
 
   docker exec -it ollama ollama pull qwen2.5:3b
 
