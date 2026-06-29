@@ -1,0 +1,205 @@
+#######################################################
+
+# Update packages
+apt update
+
+# Install Python, venv and pip
+apt install -y python3 python3-pip python3-venv
+
+# Create project
+mkdir -p ~/aws-rag-demo
+cd ~/aws-rag-demo
+
+# Create virtual environment
+python3 -m venv venv
+
+# Activate it
+source venv/bin/activate
+
+# Upgrade pip
+pip install --upgrade pip
+
+# Install dependencies
+pip install chromadb ollama sentence-transformers
+
+# Verify installation
+python -c "import chromadb; print('ChromaDB OK')"
+python -c "import ollama; print('Ollama OK')"
+python -c "from sentence_transformers import SentenceTransformer; print('Sentence Transformers OK')"
+
+
+#################################################################
+
+docker run -d \
+  --name ollama \
+  -p 11434:11434 \
+  -v ollama:/root/.ollama \
+  ollama/ollama
+
+  docker exec -it ollama ollama pull qwen2.5:3b
+
+
+  ########################################################################################
+
+
+  company_policy.txt
+
+  AWS COMPANY POLICY
+
+================================================
+EC2 STANDARDS
+================================================
+
+Production EC2
+
+- Instance Type : t3.medium
+- Operating System : Amazon Linux 2023
+- Root Volume : gp3
+- Install CloudWatch Agent
+- Enable Detailed Monitoring
+- Termination Protection : Enabled
+
+Development EC2
+
+- Instance Type : t3.small
+- Operating System : Amazon Linux 2023
+
+================================================
+S3 STANDARDS
+================================================
+
+- Versioning : Enabled
+- Block Public Access : Enabled
+- Encryption : AES256
+
+================================================
+EKS STANDARDS
+================================================
+
+- Kubernetes Version : 1.33
+- Enable IRSA
+- Enable Cluster Autoscaler
+- Use Managed Node Groups
+
+================================================
+IAM STANDARDS
+================================================
+
+- Never use root user
+- Enable MFA
+- Least Privilege Policy
+
+###############################################################################################
+
+
+nano ingest.py
+
+import chromadb
+from sentence_transformers import SentenceTransformer
+
+print("Loading embedding model...")
+
+model = SentenceTransformer("all-MiniLM-L6-v2")
+
+client = chromadb.PersistentClient(path="./chroma_db")
+
+collection = client.get_or_create_collection("company_docs")
+
+with open("company_policy.txt","r") as f:
+    document = f.read()
+
+print("Creating embedding...")
+
+embedding = model.encode(document).tolist()
+
+collection.add(
+    ids=["policy1"],
+    documents=[document],
+    embeddings=[embedding]
+)
+
+print("===================================")
+print("Document successfully stored.")
+print("===================================")
+
+#####################################################################################################3
+
+nano chat.py
+
+import chromadb
+import ollama
+from sentence_transformers import SentenceTransformer
+
+print("Connecting...")
+
+embedding_model = SentenceTransformer("all-MiniLM-L6-v2")
+
+db = chromadb.PersistentClient(path="./chroma_db")
+
+collection = db.get_collection("company_docs")
+
+client = ollama.Client(host="http://localhost:11434")
+
+print("===================================")
+print("AWS Company RAG Chat")
+print("Type exit to quit")
+print("===================================")
+
+while True:
+
+    question=input("\nYou : ")
+
+    if question.lower()=="exit":
+        break
+
+    query_embedding=embedding_model.encode(question).tolist()
+
+    result=collection.query(
+        query_embeddings=[query_embedding],
+        n_results=1
+    )
+
+    context=result["documents"][0][0]
+
+    prompt=f"""
+You are an AWS Company Assistant.
+
+Answer ONLY from the given context.
+
+If answer is not present,
+say
+
+"I don't know from the company policy."
+
+Context:
+
+{context}
+
+Question:
+
+{question}
+"""
+
+    response=client.chat(
+        model="qwen2.5:3b",
+        messages=[
+            {
+                "role":"user",
+                "content":prompt
+            }
+        ]
+    )
+
+    print("\nAssistant:\n")
+
+    print(response["message"]["content"])
+
+    #############################################################################################
+
+    python ingest.py
+
+    ################################################################
+
+    python chat.py
+
+    
