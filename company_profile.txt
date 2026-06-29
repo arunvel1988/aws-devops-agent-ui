@@ -1,0 +1,44 @@
+ AWS COMPANY POLICY
+
+================================================
+EC2 STANDARDS
+================================================
+
+Production EC2
+
+- Instance Type : t3.medium
+- Operating System : Amazon Linux 2023
+- Root Volume : gp3
+- Install CloudWatch Agent
+- Enable Detailed Monitoring
+- Termination Protection : Enabled
+
+Development EC2
+
+- Instance Type : t3.small
+- Operating System : Amazon Linux 2023
+
+================================================
+S3 STANDARDS
+================================================
+
+- Versioning : Enabled
+- Block Public Access : Enabled
+- Encryption : AES256
+
+================================================
+EKS STANDARDS
+================================================
+
+- Kubernetes Version : 1.33
+- Enable IRSA
+- Enable Cluster Autoscaler
+- Use Managed Node Groups
+
+================================================
+IAM STANDARDS
+================================================
+
+- Never use root user
+- Enable MFA
+- Least Privilege Policy
