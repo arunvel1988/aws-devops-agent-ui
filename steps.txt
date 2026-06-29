@@ -1,10 +1,10 @@
 #######################################################
 
 # Update packages
-apt update
+sudo apt update -y
 
 # Install Python, venv and pip
-apt install -y python3 python3-pip python3-venv
+sudo apt install -y python3 python3-pip python3-venv
 
 # Create project
 mkdir -p ~/aws-rag-demo
