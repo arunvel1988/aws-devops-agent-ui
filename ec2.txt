@@ -1,0 +1,39 @@
+EC2 STANDARDS
+
+================================================
+
+Production EC2
+
+- Instance Type: t3.medium
+- Operating System: Amazon Linux 2023
+- Root Volume: gp3
+- Install CloudWatch Agent
+- Enable Detailed Monitoring
+- Enable Termination Protection
+
+================================================
+
+Development EC2
+
+- Instance Type: t3.small
+- Operating System: Amazon Linux 2023
+- Root Volume: gp3
+- Install CloudWatch Agent
+- Detailed Monitoring: Optional
+
+================================================
+
+General EC2 Guidelines
+
+- Use IAM Roles instead of Access Keys.
+- Never SSH using the root account.
+- Apply the Principle of Least Privilege.
+- Enable AWS Systems Manager (SSM) Agent where possible.
+- Apply security patches regularly.
+- Use Security Groups with minimum required access.
+- Stop unused instances to reduce costs.
+- Tag every EC2 instance with:
+  - Name
+  - Environment
+  - Owner
+  - Application
