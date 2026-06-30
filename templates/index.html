@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+
+<html>
+
+<head>
+
+<title>Enterprise AI</title>
+
+<link rel="stylesheet" href="{{ url_for('static',filename='style.css') }}">
+
+</head>
+
+<body>
+
+<div class="container">
+
+<div class="header">
+
+Enterprise AI Assistant
+
+</div>
+
+<div id="chat"></div>
+
+<div class="bottom">
+
+<input
+id="message"
+placeholder="Ask anything..."
+autocomplete="off">
+
+<button onclick="sendMessage()">
+
+Send
+
+</button>
+
+</div>
+
+</div>
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script src="{{ url_for('static',filename='chat.js') }}"></script>
+
+</body>
+
+</html>
