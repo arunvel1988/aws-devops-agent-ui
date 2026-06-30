@@ -1,0 +1,16 @@
+3 STANDARDS
+
+================================================
+
+Bucket Security
+
+- Block Public Access must always be enabled.
+- Enable Server-Side Encryption (AES256 or KMS).
+- Enable Versioning.
+- Enable Bucket Logging where required.
+
+================================================
+
+Access Control
+
+- Use IAM P
