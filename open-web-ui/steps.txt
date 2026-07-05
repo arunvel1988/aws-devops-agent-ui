@@ -1,3 +1,8 @@
+#######################################################################
+
+sudp apt update -y
+sudo apt install git nano lsof -y
+sudo apt install docker.io -y
 docker stop ollama
 docker rm ollama
 ################################################################
