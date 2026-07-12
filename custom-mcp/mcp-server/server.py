@@ -111,8 +111,13 @@ class APIKeyAuthMiddleware(BaseHTTPMiddleware):
 # -------------------------------------------------------------------
 # MCP
 # -------------------------------------------------------------------
-
-mcp = FastMCP("Infrastructure MCP Server")
+mcp = FastMCP(
+    "Infrastructure MCP Server",
+    host="0.0.0.0",
+    transport_security=TransportSecuritySettings(
+        enable_dns_rebinding_protection=False,
+    ),
+)
 
 # HTTP application for Uvicorn
 app = mcp.streamable_http_app()
