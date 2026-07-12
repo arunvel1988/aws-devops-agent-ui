@@ -59,6 +59,7 @@ import docker
 import psutil
 
 from mcp.server.fastmcp import FastMCP
+from mcp.server.transport_security import TransportSecuritySettings
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse
@@ -111,9 +112,16 @@ class APIKeyAuthMiddleware(BaseHTTPMiddleware):
 # -------------------------------------------------------------------
 # MCP
 # -------------------------------------------------------------------
+
 mcp = FastMCP(
     "Infrastructure MCP Server",
     host="0.0.0.0",
+    # DNS-rebinding protection defaults to localhost-only allowlists, which
+    # rejects every request coming through a public hostname (e.g. the
+    # Killercoda tunnel domain, an AWS-facing domain, etc). Our API key
+    # middleware below is the real auth boundary, so it's safe to disable
+    # the SDK's Host-header allowlist rather than hardcode a hostname that
+    # may change between environments.
     transport_security=TransportSecuritySettings(
         enable_dns_rebinding_protection=False,
     ),
