@@ -1,3 +1,21 @@
+############################################################################
 Endpoint: https://86a0d83744b9-10-244-8-43-8080.saci.r.killercoda.com/mcp
 API Key Header: X-API-Key
 API Key Value: my-secret-key
+
+##############################################################
+
+To trigger investigate_server:
+
+"Investigate the current state of the server and give me a health summary."
+"What's the CPU, memory, and disk usage on the server right now?"
+"Check the server's health score and tell me if anything looks concerning."
+"List all running Docker containers and their status."
+"Show me the top processes by memory usage on this server."
+
+To trigger security_audit:
+
+"Run a security audit on this server and tell me the risk level."
+"Are there any security issues with how this server is configured?"
+"Check if the server is running as root or has any exposed sockets."
+##################################################################
