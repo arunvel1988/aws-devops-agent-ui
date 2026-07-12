@@ -12,8 +12,7 @@ RUN apt-get update && \
         iputils-ping \
         net-tools \
         curl \
-        openssh-client \
-        systemctl && \
+        openssh-client && \
     rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
@@ -24,4 +23,11 @@ COPY . .
 
 EXPOSE 8080
 
-CMD ["python", "server.py"]
+CMD [
+    "uvicorn",
+    "server:app",
+    "--host",
+    "0.0.0.0",
+    "--port",
+    "8080"
+]
