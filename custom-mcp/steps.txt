@@ -1,0 +1,3 @@
+Endpoint: https://86a0d83744b9-10-244-8-43-8080.saci.r.killercoda.com/mcp
+API Key Header: X-API-Key
+API Key Value: my-secret-key
