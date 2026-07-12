@@ -22,3 +22,4 @@ services:
 
     environment:
       PYTHONUNBUFFERED: "1"
+      MCP_API_KEY: my-secret-key
