@@ -1,626 +1,737 @@
-import subprocess
-import psutil
-import docker
+#!/usr/bin/env python3
+"""
+server.py
+
+Official MCP Python SDK 1.28.1
+HTTP Transport only (Streamable HTTP)
+
+Features
+--------
+- investigate_server
+- security_audit
+
+Requirements
+------------
+pip install mcp==1.28.1
+pip install psutil
+pip install docker
+
+Run
+---
+uvicorn server:app --host 0.0.0.0 --port 8080
+
+Docker Compose
+--------------
+ports:
+  - "8080:8080"
+
+IMPORTANT
+---------
+No mcp.run()
+Only:
+
+app = mcp.streamable_http_app()
+"""
+
+from __future__ import annotations
+
 import json
 import os
-from typing import Dict, List
+import platform
+import socket
+import time
+from datetime import datetime
+from typing import Any, Dict, List
+
+import docker
+import psutil
 
 from mcp.server.fastmcp import FastMCP
 
-###############################################################################
-# MCP SERVER
-###############################################################################
 
-mcp = FastMCP("EC2 Operations MCP")
+# -------------------------------------------------------------------
+# MCP
+# -------------------------------------------------------------------
 
-docker_client = docker.from_env()
+mcp = FastMCP("Infrastructure MCP Server")
 
-###############################################################################
-# HELPERS
-###############################################################################
+# HTTP application for Uvicorn
+app = mcp.streamable_http_app()
 
-def run_command(command: str) -> str:
-    """
-    Execute shell command and return output.
-    """
-    try:
-        result = subprocess.run(
-            command,
-            shell=True,
-            capture_output=True,
-            text=True,
-            timeout=20
-        )
+# -------------------------------------------------------------------
+# Docker Client
+# -------------------------------------------------------------------
 
-        if result.stdout:
-            return result.stdout.strip()
-
-        return result.stderr.strip()
-
-    except Exception as e:
-        return str(e)
+try:
+    docker_client = docker.from_env()
+except Exception:
+    docker_client = None
 
 
-def get_cpu():
-    return round(psutil.cpu_percent(interval=1), 2)
+# -------------------------------------------------------------------
+# Helpers
+# -------------------------------------------------------------------
+
+def utc_now() -> str:
+    return datetime.utcnow().isoformat() + "Z"
 
 
-def get_memory():
+def bytes_to_gb(value: int) -> float:
+    return round(value / (1024 ** 3), 2)
 
-    mem = psutil.virtual_memory()
+
+def percent(value: float) -> float:
+    return round(value, 2)
+
+
+def boot_time() -> str:
+    return datetime.fromtimestamp(
+        psutil.boot_time()
+    ).isoformat()
+
+
+# -------------------------------------------------------------------
+# CPU
+# -------------------------------------------------------------------
+
+def cpu_information() -> Dict[str, Any]:
 
     return {
-        "total_gb": round(mem.total / (1024 ** 3), 2),
-        "used_gb": round(mem.used / (1024 ** 3), 2),
-        "available_gb": round(mem.available / (1024 ** 3), 2),
-        "percent": mem.percent,
+        "physical_cores": psutil.cpu_count(False),
+        "logical_cores": psutil.cpu_count(True),
+        "usage_percent": percent(psutil.cpu_percent(interval=1)),
+        "per_cpu": [
+            percent(v)
+            for v in psutil.cpu_percent(
+                interval=1,
+                percpu=True,
+            )
+        ],
+        "load_average": (
+            os.getloadavg()
+            if hasattr(os, "getloadavg")
+            else []
+        ),
     }
 
 
-def get_disk():
+# -------------------------------------------------------------------
+# Memory
+# -------------------------------------------------------------------
 
-    disk = psutil.disk_usage("/")
+def memory_information() -> Dict[str, Any]:
+
+    vm = psutil.virtual_memory()
 
     return {
-        "total_gb": round(disk.total / (1024 ** 3), 2),
-        "used_gb": round(disk.used / (1024 ** 3), 2),
-        "free_gb": round(disk.free / (1024 ** 3), 2),
-        "percent": disk.percent,
+        "total_gb": bytes_to_gb(vm.total),
+        "used_gb": bytes_to_gb(vm.used),
+        "available_gb": bytes_to_gb(vm.available),
+        "free_gb": bytes_to_gb(vm.free),
+        "usage_percent": percent(vm.percent),
     }
 
 
-def get_load():
-
-    try:
-        load = os.getloadavg()
-
-        return {
-            "1min": round(load[0], 2),
-            "5min": round(load[1], 2),
-            "15min": round(load[2], 2),
-        }
-
-    except:
-
-        return {
-            "1min": 0,
-            "5min": 0,
-            "15min": 0,
-        }
-
-
-def get_uptime():
-
-    return run_command("uptime -p")
-
-
-def get_failed_services():
-
-    return run_command("systemctl --failed --no-pager")
-
-
-def top_cpu_processes():
-
-    return run_command(
-        "ps -eo pid,user,comm,%cpu --sort=-%cpu | head -10"
-    )
-
-
-def top_memory_processes():
-
-    return run_command(
-        "ps -eo pid,user,comm,%mem --sort=-%mem | head -10"
-    )
-
-
-###############################################################################
-# DOCKER
-###############################################################################
-
-def docker_summary():
-
-    output = []
-
-    try:
-
-        containers = docker_client.containers.list(all=True)
-
-        for container in containers:
-
-            item = {
-                "name": container.name,
-                "status": container.status,
-                "image": str(container.image.tags),
-            }
-
-            try:
-
-                stats = container.stats(stream=False)
-
-                cpu = stats["cpu_stats"]["cpu_usage"]["total_usage"]
-
-                mem = stats["memory_stats"]["usage"]
-
-                item["cpu_raw"] = cpu
-
-                item["memory_mb"] = round(mem / 1024 / 1024, 2)
-
-            except Exception:
-
-                item["cpu_raw"] = 0
-
-                item["memory_mb"] = 0
-
-            output.append(item)
-
-    except Exception as e:
-
-        output.append(
-            {
-                "error": str(e)
-            }
-        )
-
-    return output
-
-
-###############################################################################
-# TOOL 1
-###############################################################################
-
-@mcp.tool(
-    name="investigate_server",
-    description="Investigate why the EC2 server is slow or unhealthy."
-)
-def investigate_server() -> dict:
-
-    cpu = get_cpu()
-
-    memory = get_memory()
-
-    disk = get_disk()
-
-    load = get_load()
-
-    uptime = get_uptime()
-
-    failed_services = get_failed_services()
-
-    cpu_processes = top_cpu_processes()
-
-    memory_processes = top_memory_processes()
-
-    docker_info = docker_summary()
-
-    findings = []
-
-    recommendations = []
-
-    health_score = 100
-
-    ###########################################################################
-    # CPU
-    ###########################################################################
-
-    if cpu > 90:
-
-        findings.append(
-            f"Critical CPU usage detected ({cpu}%)."
-        )
-
-        recommendations.append(
-            "Investigate high CPU processes."
-        )
-
-        health_score -= 25
-
-    elif cpu > 75:
-
-        findings.append(
-            f"High CPU usage detected ({cpu}%)."
-        )
-
-        recommendations.append(
-            "Monitor CPU usage."
-        )
-
-        health_score -= 10
-
-    ###########################################################################
-    # MEMORY
-    ###########################################################################
-
-    if memory["percent"] > 90:
-
-        findings.append(
-            f"Critical memory usage ({memory['percent']}%)."
-        )
-
-        recommendations.append(
-            "Check for memory leaks."
-        )
-
-        health_score -= 20
-
-    elif memory["percent"] > 75:
-
-        findings.append(
-            f"High memory usage ({memory['percent']}%)."
-        )
-
-        health_score -= 10
-
-    ###########################################################################
-    # DISK
-    ###########################################################################
-
-    if disk["percent"] > 90:
-
-        findings.append(
-            f"Disk almost full ({disk['percent']}%)."
-        )
-
-        recommendations.append(
-            "Clean logs and Docker images."
-        )
-
-        health_score -= 20
-
-    elif disk["percent"] > 75:
-
-        findings.append(
-            f"Disk usage is high ({disk['percent']}%)."
-        )
-
-        health_score -= 10
-
-    ###########################################################################
-    # FAILED SERVICES
-    ###########################################################################
-
-    if "0 loaded units listed" not in failed_services.lower():
-
-        findings.append(
-            "One or more Linux services have failed."
-        )
-
-        recommendations.append(
-            "Review failed systemd services."
-        )
-
-        health_score -= 10
-
-    ###########################################################################
-    # DOCKER
-    ###########################################################################
-
-    running = 0
-
-    stopped = 0
-
-    for c in docker_info:
-
-        if "status" not in c:
+# -------------------------------------------------------------------
+# Disk
+# -------------------------------------------------------------------
+
+def disk_information() -> List[Dict[str, Any]]:
+
+    disks = []
+
+    for part in psutil.disk_partitions(all=False):
+
+        try:
+            usage = psutil.disk_usage(part.mountpoint)
+
+            disks.append(
+                {
+                    "device": part.device,
+                    "mount": part.mountpoint,
+                    "filesystem": part.fstype,
+                    "total_gb": bytes_to_gb(usage.total),
+                    "used_gb": bytes_to_gb(usage.used),
+                    "free_gb": bytes_to_gb(usage.free),
+                    "usage_percent": percent(
+                        usage.percent
+                    ),
+                }
+            )
+
+        except PermissionError:
             continue
 
-        if c["status"] == "running":
+    return disks
 
-            running += 1
 
-        else:
+# -------------------------------------------------------------------
+# Network
+# -------------------------------------------------------------------
 
-            stopped += 1
+def network_information() -> Dict[str, Any]:
 
-    if stopped > 0:
+    hostname = socket.gethostname()
 
-        findings.append(
-            f"{stopped} stopped Docker container(s) found."
-        )
+    try:
+        ip = socket.gethostbyname(hostname)
+    except Exception:
+        ip = "unknown"
 
-        recommendations.append(
-            "Inspect stopped containers."
-        )
+    interfaces = {}
 
-        health_score -= 5
+    for interface, addrs in psutil.net_if_addrs().items():
 
-    ###########################################################################
-    # DEFAULT
-    ###########################################################################
+        interfaces[interface] = []
 
-    if len(findings) == 0:
+        for addr in addrs:
 
-        findings.append(
-            "No critical issues detected."
-        )
+            interfaces[interface].append(
+                {
+                    "family": str(addr.family),
+                    "address": addr.address,
+                    "netmask": addr.netmask,
+                    "broadcast": addr.broadcast,
+                }
+            )
 
-        recommendations.append(
-            "Continue monitoring."
-        )
-
-    ###########################################################################
-    # RETURN
-    ###########################################################################
+    io = psutil.net_io_counters()
 
     return {
-
-        "status": "success",
-
-        "health_score": max(health_score, 0),
-
-        "summary": {
-
-            "cpu_percent": cpu,
-
-            "memory": memory,
-
-            "disk": disk,
-
-            "load_average": load,
-
-            "uptime": uptime,
-
-            "running_containers": running,
-
-            "stopped_containers": stopped
-
-        },
-
-        "findings": findings,
-
-        "recommendations": recommendations,
-
-        "failed_services": failed_services,
-
-        "top_cpu_processes": cpu_processes,
-
-        "top_memory_processes": memory_processes,
-
-        "docker": docker_info
-
+        "hostname": hostname,
+        "ip_address": ip,
+        "bytes_sent": io.bytes_sent,
+        "bytes_received": io.bytes_recv,
+        "packets_sent": io.packets_sent,
+        "packets_received": io.packets_recv,
+        "interfaces": interfaces,
     }
 
-###############################################################################
-# TOOL 2 - SECURITY AUDIT
-###############################################################################
 
-def ssh_root_login():
+# -------------------------------------------------------------------
+# Process Information
+# -------------------------------------------------------------------
 
-    return run_command(
-        "grep '^PermitRootLogin' /etc/ssh/sshd_config 2>/dev/null || echo 'Not Found'"
+def top_processes(limit: int = 10) -> List[Dict[str, Any]]:
+
+    processes = []
+
+    for proc in psutil.process_iter(
+        [
+            "pid",
+            "name",
+            "username",
+            "memory_percent",
+            "cpu_percent",
+            "status",
+        ]
+    ):
+
+        try:
+
+            info = proc.info
+
+            processes.append(
+                {
+                    "pid": info["pid"],
+                    "name": info["name"],
+                    "user": info["username"],
+                    "cpu_percent": percent(
+                        info["cpu_percent"]
+                    ),
+                    "memory_percent": percent(
+                        info["memory_percent"]
+                    ),
+                    "status": info["status"],
+                }
+            )
+
+        except Exception:
+            pass
+
+    processes.sort(
+        key=lambda x: x["memory_percent"],
+        reverse=True,
     )
 
-
-def ssh_password_auth():
-
-    return run_command(
-        "grep '^PasswordAuthentication' /etc/ssh/sshd_config 2>/dev/null || echo 'Not Found'"
-    )
+    return processes[:limit]
 
 
-def firewall_status():
+# -------------------------------------------------------------------
+# Docker Information
+# -------------------------------------------------------------------
 
-    return run_command(
-        "ufw status 2>/dev/null || firewall-cmd --state 2>/dev/null || echo 'Firewall Not Installed'"
-    )
+def docker_information() -> Dict[str, Any]:
 
+    if docker_client is None:
+        return {
+            "available": False,
+            "containers": [],
+            "images": [],
+            "networks": [],
+            "volumes": [],
+        }
 
-def open_ports():
+    result = {
+        "available": True,
+        "containers": [],
+        "images": [],
+        "networks": [],
+        "volumes": [],
+    }
 
-    return run_command(
-        "ss -tulnp"
-    )
-
-
-def docker_security():
-
-    findings = []
+    # -------------------------------------------------------------
+    # Containers
+    # -------------------------------------------------------------
 
     try:
 
-        containers = docker_client.containers.list(all=True)
-
-        for c in containers:
+        for container in docker_client.containers.list(all=True):
 
             try:
+                container.reload()
+                attrs = container.attrs
 
-                inspect = docker_client.api.inspect_container(c.id)
+                ports = attrs.get("NetworkSettings", {}).get("Ports", {})
 
-                cfg = inspect["Config"]
+                result["containers"].append(
+                    {
+                        "id": container.short_id,
+                        "name": container.name,
+                        "image": container.image.tags,
+                        "status": container.status,
+                        "created": attrs.get("Created"),
+                        "restart_count": attrs.get("RestartCount", 0),
+                        "ports": ports,
+                    }
+                )
 
-                host = inspect["HostConfig"]
+            except Exception as ex:
 
-                if cfg.get("User", "") == "":
-                    findings.append(
-                        f"{c.name}: running as root"
-                    )
+                result["containers"].append(
+                    {
+                        "name": container.name,
+                        "error": str(ex),
+                    }
+                )
 
-                if host.get("Privileged"):
+    except Exception as ex:
+        result["containers_error"] = str(ex)
 
-                    findings.append(
-                        f"{c.name}: privileged container"
-                    )
+    # -------------------------------------------------------------
+    # Images
+    # -------------------------------------------------------------
 
-                image = cfg.get("Image", "")
+    try:
 
-                if image.endswith(":latest"):
+        for image in docker_client.images.list():
 
-                    findings.append(
-                        f"{c.name}: using latest tag"
-                    )
+            result["images"].append(
+                {
+                    "id": image.short_id,
+                    "tags": image.tags,
+                }
+            )
 
-            except Exception as e:
+    except Exception as ex:
+        result["images_error"] = str(ex)
 
-                findings.append(str(e))
+    # -------------------------------------------------------------
+    # Networks
+    # -------------------------------------------------------------
 
-    except Exception as e:
+    try:
 
-        findings.append(str(e))
+        for network in docker_client.networks.list():
 
-    return findings
+            result["networks"].append(
+                {
+                    "id": network.short_id,
+                    "name": network.name,
+                    "driver": network.attrs.get("Driver"),
+                    "scope": network.attrs.get("Scope"),
+                }
+            )
+
+    except Exception as ex:
+        result["networks_error"] = str(ex)
+
+    # -------------------------------------------------------------
+    # Volumes
+    # -------------------------------------------------------------
+
+    try:
+
+        volumes = docker_client.volumes.list()
+
+        for volume in volumes:
+
+            result["volumes"].append(
+                {
+                    "name": volume.name,
+                    "mountpoint": volume.attrs.get(
+                        "Mountpoint"
+                    ),
+                }
+            )
+
+    except Exception as ex:
+        result["volumes_error"] = str(ex)
+
+    return result
 
 
-@mcp.tool(
-    name="security_audit",
-    description="Perform a Linux and Docker security audit."
-)
-def security_audit():
+# -------------------------------------------------------------------
+# System Information
+# -------------------------------------------------------------------
 
-    score = 100
-
-    findings = []
-
-    recommendations = []
-
-    #######################################################################
-    # SSH
-    #######################################################################
-
-    root_login = ssh_root_login()
-
-    if "yes" in root_login.lower():
-
-        score -= 25
-
-        findings.append(
-            "SSH Root Login is ENABLED."
-        )
-
-        recommendations.append(
-            "Disable PermitRootLogin."
-        )
-
-    password = ssh_password_auth()
-
-    if "yes" in password.lower():
-
-        score -= 20
-
-        findings.append(
-            "SSH Password Authentication is ENABLED."
-        )
-
-        recommendations.append(
-            "Use SSH keys only."
-        )
-
-    #######################################################################
-    # FIREWALL
-    #######################################################################
-
-    firewall = firewall_status()
-
-    if "inactive" in firewall.lower():
-
-        score -= 15
-
-        findings.append(
-            "Firewall is disabled."
-        )
-
-        recommendations.append(
-            "Enable UFW."
-        )
-
-    #######################################################################
-    # DOCKER
-    #######################################################################
-
-    docker_findings = docker_security()
-
-    if docker_findings:
-
-        score -= min(len(docker_findings) * 5, 25)
-
-        findings.extend(docker_findings)
-
-        recommendations.append(
-            "Review Docker security configuration."
-        )
-
-    #######################################################################
-    # DISK
-    #######################################################################
-
-    disk = get_disk()
-
-    if disk["percent"] > 90:
-
-        score -= 10
-
-        findings.append(
-            f"Disk usage is high ({disk['percent']}%)."
-        )
-
-        recommendations.append(
-            "Free disk space."
-        )
-
-    #######################################################################
-    # OPEN PORTS
-    #######################################################################
-
-    ports = open_ports()
-
-    #######################################################################
-    # DEFAULT
-    #######################################################################
-
-    if not findings:
-
-        findings.append(
-            "No major security issues detected."
-        )
-
-    if not recommendations:
-
-        recommendations.append(
-            "System follows basic security practices."
-        )
-
-    #######################################################################
-    # RETURN
-    #######################################################################
+def system_information() -> Dict[str, Any]:
 
     return {
-
-        "status": "success",
-
-        "security_score": max(score, 0),
-
-        "findings": findings,
-
-        "recommendations": recommendations,
-
-        "ssh_root_login": root_login,
-
-        "ssh_password_authentication": password,
-
-        "firewall": firewall,
-
-        "disk_usage": disk,
-
-        "open_ports": ports
-
+        "hostname": socket.gethostname(),
+        "platform": platform.platform(),
+        "system": platform.system(),
+        "release": platform.release(),
+        "version": platform.version(),
+        "machine": platform.machine(),
+        "processor": platform.processor(),
+        "architecture": platform.architecture(),
+        "boot_time": boot_time(),
+        "python_version": platform.python_version(),
     }
 
 
-###############################################################################
-# MAIN
-###############################################################################
+# -------------------------------------------------------------------
+# Health Score
+# -------------------------------------------------------------------
+
+def calculate_health_score(
+    cpu: Dict[str, Any],
+    memory: Dict[str, Any],
+    disks: List[Dict[str, Any]],
+) -> Dict[str, Any]:
+
+    score = 100
+    findings = []
+
+    # CPU
+    if cpu["usage_percent"] > 90:
+        score -= 30
+        findings.append("Critical CPU usage")
+
+    elif cpu["usage_percent"] > 80:
+        score -= 15
+        findings.append("High CPU usage")
+
+    # Memory
+    if memory["usage_percent"] > 90:
+        score -= 30
+        findings.append("Critical memory usage")
+
+    elif memory["usage_percent"] > 80:
+        score -= 15
+        findings.append("High memory usage")
+
+    # Disk
+    for disk in disks:
+
+        if disk["usage_percent"] > 95:
+            score -= 20
+            findings.append(
+                f"Disk nearly full ({disk['mount']})"
+            )
+
+        elif disk["usage_percent"] > 85:
+            score -= 10
+            findings.append(
+                f"Disk usage high ({disk['mount']})"
+            )
+
+    score = max(score, 0)
+
+    if score >= 90:
+        status = "Healthy"
+    elif score >= 70:
+        status = "Warning"
+    elif score >= 50:
+        status = "Degraded"
+    else:
+        status = "Critical"
+
+    return {
+        "score": score,
+        "status": status,
+        "findings": findings,
+    }
+
+
+# -------------------------------------------------------------------
+# MCP Tool 1
+# investigate_server
+# -------------------------------------------------------------------
+
+@mcp.tool()
+def investigate_server() -> Dict[str, Any]:
+    """
+    Collect infrastructure information from the host and Docker.
+    Returns structured JSON suitable for MCP clients.
+    """
+
+    start = time.time()
+
+    system = system_information()
+    cpu = cpu_information()
+    memory = memory_information()
+    disks = disk_information()
+    network = network_information()
+    docker_info = docker_information()
+    processes = top_processes()
+
+    health = calculate_health_score(
+        cpu=cpu,
+        memory=memory,
+        disks=disks,
+    )
+
+    elapsed_ms = round((time.time() - start) * 1000, 2)
+
+    return {
+        "success": True,
+        "tool": "investigate_server",
+        "timestamp": utc_now(),
+        "execution_time_ms": elapsed_ms,
+        "summary": {
+            "health_status": health["status"],
+            "health_score": health["score"],
+            "hostname": system["hostname"],
+        },
+        "system": system,
+        "cpu": cpu,
+        "memory": memory,
+        "disk": disks,
+        "network": network,
+        "docker": docker_info,
+        "top_processes": processes,
+        "health": health,
+    }
+
+
+# -------------------------------------------------------------------
+# Security Checks
+# -------------------------------------------------------------------
+
+def security_checks() -> Dict[str, Any]:
+
+    issues = []
+    recommendations = []
+
+    # -------------------------------------------------------------
+    # Running as root
+    # -------------------------------------------------------------
+
+    try:
+
+        if hasattr(os, "geteuid"):
+
+            if os.geteuid() == 0:
+                issues.append(
+                    {
+                        "severity": "HIGH",
+                        "check": "Running as root",
+                        "message": "Application is running with root privileges.",
+                    }
+                )
+
+                recommendations.append(
+                    "Run the container using a non-root user."
+                )
+
+    except Exception:
+        pass
+
+    # -------------------------------------------------------------
+    # Docker Socket
+    # -------------------------------------------------------------
+
+    if os.path.exists("/var/run/docker.sock"):
+
+        issues.append(
+            {
+                "severity": "HIGH",
+                "check": "Docker socket mounted",
+                "message": "/var/run/docker.sock is accessible.",
+            }
+        )
+
+        recommendations.append(
+            "Avoid mounting docker.sock unless absolutely required."
+        )
+
+    # -------------------------------------------------------------
+    # Swap Memory
+    # -------------------------------------------------------------
+
+    swap = psutil.swap_memory()
+
+    if swap.total == 0:
+
+        issues.append(
+            {
+                "severity": "LOW",
+                "check": "Swap",
+                "message": "Swap memory is disabled.",
+            }
+        )
+
+    # -------------------------------------------------------------
+    # Disk Usage
+    # -------------------------------------------------------------
+
+    for disk in disk_information():
+
+        if disk["usage_percent"] > 90:
+
+            issues.append(
+                {
+                    "severity": "MEDIUM",
+                    "check": "Disk Usage",
+                    "message": (
+                        f"{disk['mount']} usage "
+                        f"{disk['usage_percent']}%"
+                    ),
+                }
+            )
+
+            recommendations.append(
+                f"Clean up filesystem {disk['mount']}."
+            )
+
+    # -------------------------------------------------------------
+    # Memory
+    # -------------------------------------------------------------
+
+    memory = memory_information()
+
+    if memory["usage_percent"] > 85:
+
+        issues.append(
+            {
+                "severity": "MEDIUM",
+                "check": "Memory",
+                "message": (
+                    f"Memory usage "
+                    f"{memory['usage_percent']}%"
+                ),
+            }
+        )
+
+        recommendations.append(
+            "Investigate memory-consuming processes."
+        )
+
+    # -------------------------------------------------------------
+    # CPU
+    # -------------------------------------------------------------
+
+    cpu = cpu_information()
+
+    if cpu["usage_percent"] > 90:
+
+        issues.append(
+            {
+                "severity": "HIGH",
+                "check": "CPU",
+                "message": (
+                    f"CPU utilization "
+                    f"{cpu['usage_percent']}%"
+                ),
+            }
+        )
+
+        recommendations.append(
+            "Investigate CPU-intensive workloads."
+        )
+
+    return {
+        "issues": issues,
+        "recommendations": sorted(
+            list(set(recommendations))
+        ),
+    }
+
+
+# -------------------------------------------------------------------
+# MCP Tool 2
+# security_audit
+# -------------------------------------------------------------------
+
+@mcp.tool()
+def security_audit() -> Dict[str, Any]:
+    """
+    Perform a lightweight security audit of the local host
+    and Docker environment.
+    """
+
+    start = time.time()
+
+    audit = security_checks()
+
+    severity_count = {
+        "HIGH": 0,
+        "MEDIUM": 0,
+        "LOW": 0,
+    }
+
+    for issue in audit["issues"]:
+        severity = issue["severity"]
+        severity_count[severity] += 1
+
+    # -------------------------------------------------------------
+    # Calculate overall risk
+    # -------------------------------------------------------------
+
+    if severity_count["HIGH"] > 0:
+        overall_risk = "HIGH"
+    elif severity_count["MEDIUM"] > 0:
+        overall_risk = "MEDIUM"
+    elif severity_count["LOW"] > 0:
+        overall_risk = "LOW"
+    else:
+        overall_risk = "NONE"
+
+    elapsed_ms = round((time.time() - start) * 1000, 2)
+
+    return {
+        "success": True,
+        "tool": "security_audit",
+        "timestamp": utc_now(),
+        "execution_time_ms": elapsed_ms,
+        "summary": {
+            "overall_risk": overall_risk,
+            "total_findings": len(audit["issues"]),
+            "severity": severity_count,
+        },
+        "findings": audit["issues"],
+        "recommendations": audit["recommendations"],
+    }
+
+
+# -------------------------------------------------------------------
+# Optional Local Test
+# -------------------------------------------------------------------
 
 if __name__ == "__main__":
+    import json
 
-    print("=" * 60)
-    print("Starting EC2 Operations MCP Server")
-    print("Transport : Streamable HTTP")
-    print("Host      : 0.0.0.0")
-    print("Port      : 8080")
-    print("Endpoint  : http://0.0.0.0:8080/mcp")
-    print("=" * 60)
+    print("=" * 80)
+    print("Testing investigate_server()")
+    print("=" * 80)
+    print(json.dumps(investigate_server(), indent=2))
 
-    mcp.run(
-        transport="streamable-http",
-        host="0.0.0.0",
-        port=8080,
-        path="/mcp",
-    )
+    print()
+    print("=" * 80)
+    print("Testing security_audit()")
+    print("=" * 80)
+    print(json.dumps(security_audit(), indent=2))
+
+
