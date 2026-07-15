@@ -1,12 +1,108 @@
-from fastmcp import FastMCP
-import boto3
+#!/usr/bin/env python3
+
+from __future__ import annotations
+
 import os
 import time
+import secrets
+from datetime import datetime
+from typing import Dict, Any
+
+import boto3
+
+from mcp.server.fastmcp import FastMCP
+from mcp.server.transport_security import TransportSecuritySettings
+
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request
+from starlette.responses import JSONResponse
+
+
+# ============================================================
+# MCP API KEY AUTH
+# ============================================================
+
+MCP_API_KEY = os.environ.get("MCP_API_KEY")
+
+if not MCP_API_KEY:
+    raise RuntimeError(
+        "MCP_API_KEY environment variable missing"
+    )
+
+
+class APIKeyAuthMiddleware(BaseHTTPMiddleware):
+
+    async def dispatch(
+        self,
+        request: Request,
+        call_next
+    ):
+
+        supplied_key = request.headers.get(
+            "x-api-key"
+        )
+
+        if not supplied_key:
+
+            auth = request.headers.get(
+                "authorization",
+                ""
+            )
+
+            if auth.lower().startswith(
+                "bearer "
+            ):
+                supplied_key = auth[7:]
+
+
+        if (
+            not supplied_key
+            or not secrets.compare_digest(
+                supplied_key,
+                MCP_API_KEY
+            )
+        ):
+
+            return JSONResponse(
+                {
+                    "error": "Unauthorized"
+                },
+                status_code=401
+            )
+
+
+        return await call_next(request)
+
+
+
+# ============================================================
+# MCP SERVER
+# ============================================================
 
 
 mcp = FastMCP(
-    "AWS DevOps SSM MCP"
+    "AWS DevOps Remediation MCP",
+
+    host="0.0.0.0",
+
+    transport_security=
+    TransportSecuritySettings(
+        enable_dns_rebinding_protection=False
+    )
 )
+
+
+app = mcp.streamable_http_app()
+
+app.add_middleware(
+    APIKeyAuthMiddleware
+)
+
+
+
+# ============================================================
+# AWS SSM CLIENT
+# ============================================================
 
 
 REGION = os.getenv(
@@ -22,7 +118,15 @@ ssm = boto3.client(
 
 
 
-def execute_command(instance_id, command):
+# ============================================================
+# HELPERS
+# ============================================================
+
+
+def run_ssm_command(
+    instance_id: str,
+    command: str
+):
 
     response = ssm.send_command(
 
@@ -34,21 +138,18 @@ def execute_command(instance_id, command):
         "AWS-RunShellScript",
 
         Parameters={
-
             "commands":[
                 command
             ]
-
         }
 
     )
 
 
-    command_id = response[
-        "Command"
-    ][
-        "CommandId"
-    ]
+    command_id = (
+        response["Command"]
+        ["CommandId"]
+    )
 
 
     time.sleep(3)
@@ -88,103 +189,194 @@ def execute_command(instance_id, command):
 
 
 
+def timestamp():
+
+    return (
+        datetime.utcnow()
+        .isoformat()
+        + "Z"
+    )
+
+
+
+# ============================================================
+# INVESTIGATION TOOLS
+# ============================================================
+
+
 @mcp.tool()
-def get_top_processes(
+def get_remote_processes(
     instance_id: str
-):
+) -> Dict[str,Any]:
 
     """
-    Get top CPU consuming processes
+    Find top CPU and memory consuming processes
+    on EC2 instance.
     """
 
     command = """
 
-    ps aux --sort=-%cpu | head -10
+    ps aux --sort=-%cpu | head -15
 
     """
 
 
-    return execute_command(
+    return {
+
+        "timestamp":
+            timestamp(),
+
+        "instance":
+            instance_id,
+
+        "result":
+            run_ssm_command(
+                instance_id,
+                command
+            )
+
+    }
+
+
+
+
+@mcp.tool()
+def check_memory(
+    instance_id:str
+):
+
+    """
+    Check server memory usage.
+    """
+
+    return run_ssm_command(
 
         instance_id,
 
-        command
+        """
+        free -m
+        """
 
     )
 
 
 
+
 @mcp.tool()
-def get_memory_usage(
-    instance_id: str
+def check_disk(
+    instance_id:str
 ):
 
     """
-    Check memory utilization
+    Check disk usage.
     """
 
-    command = """
-
-    free -m
-
-    """
-
-
-    return execute_command(
+    return run_ssm_command(
 
         instance_id,
 
-        command
+        """
+        df -h
+        """
 
     )
 
 
 
+# ============================================================
+# REMEDIATION TOOLS
+# ============================================================
+
+
 @mcp.tool()
-def kill_process(
-    instance_id: str,
-    pid: int
+def kill_remote_process(
+    instance_id:str,
+    pid:int
 ):
 
     """
-    Kill a process using PID
+    Kill high resource consuming process.
     """
 
-    command = f"""
+    command=f"""
 
     kill -15 {pid}
 
     """
 
 
-    return execute_command(
+    return {
 
-        instance_id,
+        "action":
+            "kill_process",
 
-        command
+        "pid":
+            pid,
 
-    )
+        "result":
+            run_ssm_command(
+                instance_id,
+                command
+            )
+
+    }
+
 
 
 
 @mcp.tool()
 def restart_service(
-    instance_id: str,
-    service_name: str
+    instance_id:str,
+    service_name:str
 ):
 
     """
-    Restart Linux service
+    Restart Linux service.
     """
 
-    command = f"""
+    command=f"""
 
     systemctl restart {service_name}
 
     """
 
 
-    return execute_command(
+    return {
+
+        "action":
+            "restart_service",
+
+        "service":
+            service_name,
+
+        "result":
+            run_ssm_command(
+                instance_id,
+                command
+            )
+
+    }
+
+
+
+
+@mcp.tool()
+def clear_temp_files(
+    instance_id:str
+):
+
+    """
+    Cleanup temporary files.
+    """
+
+    command="""
+
+    rm -rf /tmp/*
+
+    """
+
+
+    return run_ssm_command(
 
         instance_id,
 
@@ -195,35 +387,59 @@ def restart_service(
 
 
 @mcp.tool()
-def disk_usage(
-    instance_id: str
+def restart_application(
+    instance_id:str,
+    service_name:str
 ):
 
     """
-    Check disk usage
+    Application remediation action.
     """
 
-    command = """
-
-    df -h
-
-    """
-
-
-    return execute_command(
-
+    return restart_service(
         instance_id,
-
-        command
-
+        service_name
     )
 
 
 
+# ============================================================
+# HEALTH
+# ============================================================
+
+
+@mcp.tool()
+def health_check():
+
+    return {
+
+        "status":"healthy",
+
+        "service":
+            "AWS DevOps Remediation MCP",
+
+        "region":
+            REGION,
+
+        "time":
+            timestamp()
+
+    }
+
+
+
+# ============================================================
+# START
+# ============================================================
+
+
 if __name__ == "__main__":
 
+    import uvicorn
 
-    mcp.run(
+    uvicorn.run(
+
+        app,
 
         host="0.0.0.0",
 
