@@ -2,28 +2,67 @@ version: "3.9"
 
 services:
 
-  aws-devops-mcp:
+  infrastructure-mcp-server:
 
     build:
       context: .
 
-    container_name: aws-devops-mcp
+    container_name: infrastructure-mcp-server
 
     restart: unless-stopped
 
+
     ports:
+
       - "8080:8080"
 
-    env_file:
-      - .env
 
     environment:
 
-      MCP_SERVER_NAME: aws-ssm-process-manager
+      # MCP Authentication
+      MCP_API_KEY: "CHANGE_THIS_TO_STRONG_RANDOM_KEY"
+
+
+      # AWS Authentication for boto3
+      AWS_ACCESS_KEY_ID: "YOUR_NEW_ACCESS_KEY"
+
+      AWS_SECRET_ACCESS_KEY: "YOUR_NEW_SECRET_KEY"
+
+      AWS_REGION: "ap-south-1"
+
+
+      # Optional
+      PYTHONUNBUFFERED: "1"
+
+
+
+    volumes:
+
+      # Required only because your code checks Docker
+      - /var/run/docker.sock:/var/run/docker.sock
+
+
+
+    command:
+
+      - uvicorn
+
+      - server:app
+
+      - --host
+
+      - 0.0.0.0
+
+      - --port
+
+      - "8080"
+
+
 
     networks:
 
       - mcp-network
+
 
 
 networks:
