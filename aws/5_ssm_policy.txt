@@ -4,3 +4,20 @@ AmazonSSMManagedInstanceCore
 
 sudo systemctl restart snap.amazon-ssm-agent.amazon-ssm-agent
 
+###########################################
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "FullSSMAccess",
+      "Effect": "Allow",
+      "Action": [
+        "ssm:*",
+        "ssmmessages:*",
+        "ec2messages:*"
+      ],
+      "Resource": "*"
+    }
+  ]
+}
+###########################################
