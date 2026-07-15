@@ -2,3 +2,5 @@
 AmazonSSMManagedInstanceCore
 ###########################################
 
+sudo systemctl restart snap.amazon-ssm-agent.amazon-ssm-agent
+
