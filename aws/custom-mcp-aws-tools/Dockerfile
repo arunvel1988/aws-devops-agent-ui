@@ -17,6 +17,10 @@ EXPOSE 8080
 
 
 CMD [
-"python",
-"server.py"
+"uvicorn",
+"server:app",
+"--host",
+"0.0.0.0",
+"--port",
+"8080"
 ]
