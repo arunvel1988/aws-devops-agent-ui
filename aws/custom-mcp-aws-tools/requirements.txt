@@ -1,2 +1,6 @@
-fastmcp
+mcp==1.28.1
+psutil
+docker
+starlette
+uvicorn
 boto3
