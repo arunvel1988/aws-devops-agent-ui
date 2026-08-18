@@ -1,0 +1,733 @@
+############################################################
+
+mkdir -p agent tools/ec2 templates
+touch agent/__init__.py
+touch tools/__init__.py
+touch tools/ec2/__init__.py
+
+
+nano tools/ec2/instances.py
+
+import boto3
+
+
+aws = boto3.Session(
+    profile_name="user1",
+    region_name="ap-south-1"
+)
+
+ec2 = aws.client("ec2")
+
+
+def get_ec2_instances():
+    response = ec2.describe_instances()
+
+    instances = []
+
+    for reservation in response["Reservations"]:
+        for instance in reservation["Instances"]:
+            instances.append({
+                "instance_id": instance["InstanceId"],
+                "state": instance["State"]["Name"],
+                "instance_type": instance["InstanceType"],
+                "private_ip": instance.get("PrivateIpAddress"),
+                "public_ip": instance.get("PublicIpAddress")
+            })
+
+    return instances
+
+
+    ###################################
+
+
+nano agent/registry.py
+
+from tools.ec2.instances import get_ec2_instances
+
+
+TOOL_FUNCTIONS = {
+    "get_ec2_instances": get_ec2_instances
+}
+
+
+TOOL_DEFINITIONS = [
+    {
+        "type": "function",
+        "name": "get_ec2_instances",
+        "description": "Get information about EC2 instances in the AWS account.",
+        "parameters": {
+            "type": "object",
+            "properties": {},
+            "required": []
+        }
+    }
+]
+
+
+##################################################
+
+nano agent/executor.py
+
+from agent.registry import TOOL_FUNCTIONS
+
+
+def execute_tool(name, arguments):
+
+    if name not in TOOL_FUNCTIONS:
+        raise ValueError(f"Unknown tool: {name}")
+
+    function = TOOL_FUNCTIONS[name]
+
+    return function(**arguments)
+
+    #############################
+
+
+    from openai import OpenAI
+import json
+
+from agent.registry import TOOL_DEFINITIONS
+from agent.executor import execute_tool
+
+
+client = OpenAI()
+
+
+def run_agent(user_message):
+
+    response = client.responses.create(
+        model="openai.gpt-oss-120b",
+        input=[
+            {
+                "role": "user",
+                "content": user_message
+            }
+        ],
+        tools=TOOL_DEFINITIONS
+    )
+
+    tool_outputs = []
+
+    for item in response.output:
+
+        if item.type == "function_call":
+
+            print(f"Agent requested tool: {item.name}")
+
+            arguments = json.loads(item.arguments)
+
+            result = execute_tool(
+                item.name,
+                arguments
+            )
+
+            print(f"Tool result: {result}")
+
+            tool_outputs.append({
+                "type": "function_call_output",
+                "call_id": item.call_id,
+                "output": json.dumps(result)
+            })
+
+    if tool_outputs:
+
+        final_response = client.responses.create(
+            model="openai.gpt-oss-120b",
+            previous_response_id=response.id,
+            input=tool_outputs,
+            tools=TOOL_DEFINITIONS
+        )
+
+        return final_response.output_text
+
+    return response.output_text
+
+
+    ########################################################
+
+    from flask import Flask, render_template, request, jsonify
+
+from agent.core import run_agent
+
+
+app = Flask(__name__)
+
+
+@app.route("/")
+def home():
+    return render_template("index.html")
+
+
+@app.route("/chat", methods=["POST"])
+def chat():
+
+    data = request.json
+
+    message = data.get("message", "").strip()
+
+    if not message:
+        return jsonify({
+            "error": "Message cannot be empty"
+        }), 400
+
+    answer = run_agent(message)
+
+    return jsonify({
+        "answer": answer
+    })
+
+
+if __name__ == "__main__":
+
+    app.run(
+        host="0.0.0.0",
+        port=5000,
+        debug=True
+    )
+
+    ##############################################
+
+
+    templates/index.html
+
+
+    <!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>AWS DevOps Agent</title>
+
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            font-family: Arial, Helvetica, sans-serif;
+            background: #212121;
+            color: #ffffff;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Header */
+
+        .header {
+            height: 60px;
+            border-bottom: 1px solid #444;
+            display: flex;
+            align-items: center;
+            padding: 0 25px;
+            font-size: 18px;
+            font-weight: bold;
+        }
+
+        .status {
+            margin-left: 15px;
+            font-size: 12px;
+            color: #8bc34a;
+            font-weight: normal;
+        }
+
+        /* Main */
+
+        .container {
+            flex: 1;
+            display: flex;
+            justify-content: center;
+            overflow: hidden;
+        }
+
+        .chat {
+            width: 850px;
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+        }
+
+        /* Messages */
+
+        #messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 30px 10px;
+        }
+
+        .message {
+            padding: 18px;
+            margin-bottom: 12px;
+            border-radius: 10px;
+            line-height: 1.6;
+            white-space: pre-wrap;
+        }
+
+        .user {
+            background: #2f2f2f;
+        }
+
+        .assistant {
+            background: #1f1f1f;
+        }
+
+        .label {
+            font-weight: bold;
+            margin-bottom: 8px;
+        }
+
+        /* Welcome */
+
+        .welcome {
+            text-align: center;
+            margin-top: 120px;
+            color: #aaa;
+        }
+
+        .welcome h1 {
+            color: white;
+            font-size: 30px;
+        }
+
+        .welcome p {
+            font-size: 16px;
+        }
+
+        /* Input */
+
+        .input-area {
+            padding: 15px 0 25px;
+        }
+
+        .input-box {
+            display: flex;
+            background: #2f2f2f;
+            border: 1px solid #555;
+            border-radius: 14px;
+            padding: 8px;
+        }
+
+        textarea {
+            flex: 1;
+            resize: none;
+            border: none;
+            outline: none;
+            background: transparent;
+            color: white;
+            padding: 12px;
+            font-size: 16px;
+            height: 55px;
+        }
+
+        textarea::placeholder {
+            color: #888;
+        }
+
+        button {
+            width: 50px;
+            height: 45px;
+            border: none;
+            border-radius: 9px;
+            background: white;
+            color: black;
+            cursor: pointer;
+            font-size: 20px;
+            margin-top: 5px;
+        }
+
+        button:hover {
+            background: #ddd;
+        }
+
+        button:disabled {
+            background: #555;
+            color: #888;
+            cursor: not-allowed;
+        }
+
+        /* Thinking */
+
+        .thinking {
+            color: #aaa;
+        }
+
+        .dots {
+            display: inline-block;
+            margin-left: 5px;
+        }
+
+        /* Tool activity */
+
+        .tool-box {
+            background: #292929;
+            border: 1px solid #444;
+            border-radius: 8px;
+            padding: 12px;
+            margin-top: 10px;
+            color: #aaa;
+            font-size: 14px;
+        }
+
+        .tool-success {
+            color: #8bc34a;
+        }
+
+        /* Scrollbar */
+
+        #messages::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        #messages::-webkit-scrollbar-track {
+            background: #212121;
+        }
+
+        #messages::-webkit-scrollbar-thumb {
+            background: #555;
+            border-radius: 5px;
+        }
+
+        @media (max-width: 900px) {
+            .chat {
+                width: 95%;
+            }
+        }
+    </style>
+</head>
+
+
+<body>
+
+    <!-- HEADER -->
+
+    <div class="header">
+
+        AWS DevOps Agent
+
+        <span class="status">
+            ● Connected
+        </span>
+
+    </div>
+
+
+    <!-- CHAT -->
+
+    <div class="container">
+
+        <div class="chat">
+
+            <div id="messages">
+
+                <!-- Welcome screen -->
+
+                <div class="welcome" id="welcome">
+
+                    <h1>AWS DevOps Agent</h1>
+
+                    <p>
+                        Investigate and troubleshoot your AWS infrastructure using AI.
+                    </p>
+
+                </div>
+
+            </div>
+
+
+            <!-- INPUT -->
+
+            <div class="input-area">
+
+                <div class="input-box">
+
+                    <textarea
+                        id="message"
+                        placeholder="Ask your DevOps agent..."
+                        onkeydown="handleKey(event)"
+                    ></textarea>
+
+                    <button
+                        id="sendButton"
+                        onclick="sendMessage()"
+                    >
+                        ↑
+                    </button>
+
+                </div>
+
+            </div>
+
+        </div>
+
+    </div>
+
+
+<script>
+
+/* --------------------------------------------------
+   ENTER KEY
+-------------------------------------------------- */
+
+function handleKey(event) {
+
+    if (event.key === "Enter" && !event.shiftKey) {
+
+        event.preventDefault();
+
+        sendMessage();
+    }
+}
+
+
+/* --------------------------------------------------
+   SEND MESSAGE
+-------------------------------------------------- */
+
+async function sendMessage() {
+
+    const input = document.getElementById("message");
+
+    const button = document.getElementById("sendButton");
+
+    const messages = document.getElementById("messages");
+
+    const welcome = document.getElementById("welcome");
+
+
+    const message = input.value.trim();
+
+
+    if (!message) {
+        return;
+    }
+
+
+    /* Remove welcome screen */
+
+    if (welcome) {
+        welcome.remove();
+    }
+
+
+    /* Add user message */
+
+    messages.innerHTML += `
+
+        <div class="message user">
+
+            <div class="label">
+                You
+            </div>
+
+            ${escapeHtml(message)}
+
+        </div>
+
+    `;
+
+
+    /* Clear input */
+
+    input.value = "";
+
+
+    /* Disable button */
+
+    button.disabled = true;
+
+
+    /* Thinking message */
+
+    const thinkingId = "thinking-" + Date.now();
+
+
+    messages.innerHTML += `
+
+        <div
+            class="message assistant thinking"
+            id="${thinkingId}"
+        >
+
+            <div class="label">
+                AWS DevOps Agent
+            </div>
+
+            <div class="tool-box">
+
+                Investigating your AWS environment
+                <span class="dots">...</span>
+
+            </div>
+
+        </div>
+
+    `;
+
+
+    scrollToBottom();
+
+
+    try {
+
+        const response = await fetch("/chat", {
+
+            method: "POST",
+
+            headers: {
+                "Content-Type": "application/json"
+            },
+
+            body: JSON.stringify({
+                message: message
+            })
+
+        });
+
+
+        const data = await response.json();
+
+
+        /* Remove thinking message */
+
+        const thinking =
+            document.getElementById(thinkingId);
+
+        if (thinking) {
+            thinking.remove();
+        }
+
+
+        /* Display error */
+
+        if (data.error) {
+
+            messages.innerHTML += `
+
+                <div class="message assistant">
+
+                    <div class="label">
+                        AWS DevOps Agent
+                    </div>
+
+                    ${escapeHtml(data.error)}
+
+                </div>
+
+            `;
+
+        }
+
+        else {
+
+            /* Display agent response */
+
+            messages.innerHTML += `
+
+                <div class="message assistant">
+
+                    <div class="label">
+                        AWS DevOps Agent
+                    </div>
+
+                    ${formatResponse(data.answer)}
+
+                </div>
+
+            `;
+
+        }
+
+
+    }
+
+    catch (error) {
+
+        const thinking =
+            document.getElementById(thinkingId);
+
+        if (thinking) {
+
+            thinking.innerHTML = `
+
+                <div class="label">
+                    AWS DevOps Agent
+                </div>
+
+                <div class="tool-box">
+                    Unable to connect to the agent.
+                </div>
+
+            `;
+
+        }
+
+    }
+
+
+    /* Enable button */
+
+    button.disabled = false;
+
+
+    input.focus();
+
+
+    scrollToBottom();
+}
+
+
+/* --------------------------------------------------
+   FORMAT RESPONSE
+-------------------------------------------------- */
+
+function formatResponse(text) {
+
+    if (!text) {
+        return "";
+    }
+
+
+    return escapeHtml(text)
+        .replace(/\n/g, "<br>")
+        .replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>");
+
+}
+
+
+/* --------------------------------------------------
+   HTML ESCAPE
+-------------------------------------------------- */
+
+function escapeHtml(text) {
+
+    const div = document.createElement("div");
+
+    div.textContent = text;
+
+    return div.innerHTML;
+}
+
+
+/* --------------------------------------------------
+   SCROLL
+-------------------------------------------------- */
+
+function scrollToBottom() {
+
+    const messages =
+        document.getElementById("messages");
+
+    messages.scrollTop = messages.scrollHeight;
+
+}
+
+</script>
+
+</body>
+
+</html>
+
+##################################################
