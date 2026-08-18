@@ -1,0 +1,190 @@
+####################################
+
+nano /home/arun/agent/core.py
+
+from openai import OpenAI
+import json
+
+from agent.registry import TOOL_DEFINITIONS
+from agent.executor import execute_tool
+
+
+client = OpenAI()
+
+# Stores the latest response for each chat session.
+# For now we use one session because you are testing.
+conversation_state = {
+    "default": None
+}
+
+
+def run_agent(user_message, session_id="default"):
+
+    previous_response_id = conversation_state.get(session_id)
+
+    # ------------------------------------------------
+    # First message
+    # ------------------------------------------------
+
+    if previous_response_id:
+
+        response = client.responses.create(
+            model="openai.gpt-oss-120b",
+            previous_response_id=previous_response_id,
+            input=[
+                {
+                    "role": "user",
+                    "content": user_message
+                }
+            ],
+            tools=TOOL_DEFINITIONS
+        )
+
+    else:
+
+        response = client.responses.create(
+            model="openai.gpt-oss-120b",
+            input=[
+                {
+                    "role": "user",
+                    "content": user_message
+                }
+            ],
+            tools=TOOL_DEFINITIONS
+        )
+
+    # ------------------------------------------------
+    # Execute requested tools
+    # ------------------------------------------------
+
+    tool_outputs = []
+
+    for item in response.output:
+
+        if item.type == "function_call":
+
+            print(f"Agent requested tool: {item.name}")
+
+            arguments = json.loads(item.arguments)
+
+            result = execute_tool(
+                item.name,
+                arguments
+            )
+
+            print(f"AWS tool result:")
+            print(result)
+
+            tool_outputs.append({
+                "type": "function_call_output",
+                "call_id": item.call_id,
+                "output": json.dumps(result)
+            })
+
+    # ------------------------------------------------
+    # Send tool result back to model
+    # ------------------------------------------------
+
+    if tool_outputs:
+
+        final_response = client.responses.create(
+            model="openai.gpt-oss-120b",
+            previous_response_id=response.id,
+            input=tool_outputs,
+            tools=TOOL_DEFINITIONS
+        )
+
+        # IMPORTANT:
+        # Remember the final response, not the first response.
+        conversation_state[session_id] = final_response.id
+
+        return final_response.output_text
+
+    # ------------------------------------------------
+    # No tool required
+    # ------------------------------------------------
+
+    conversation_state[session_id] = response.id
+
+    return response.output_text
+
+    #############################################
+
+nano app.py
+
+from flask import Flask, render_template, request, jsonify
+
+from agent.core import run_agent
+
+
+app = Flask(__name__)
+
+
+# --------------------------------------------------
+# HOME PAGE
+# --------------------------------------------------
+
+@app.route("/")
+def home():
+    return render_template("index.html")
+
+
+# --------------------------------------------------
+# CHAT API
+# --------------------------------------------------
+
+@app.route("/chat", methods=["POST"])
+def chat():
+
+    data = request.get_json()
+
+    if not data:
+        return jsonify({
+            "error": "Invalid request"
+        }), 400
+
+    message = data.get("message", "").strip()
+
+    if not message:
+        return jsonify({
+            "error": "Message cannot be empty"
+        }), 400
+
+    try:
+
+        # For now we use one session.
+        # Later we will give every student
+        # a separate session ID.
+
+        answer = run_agent(
+            message,
+            session_id="default"
+        )
+
+        return jsonify({
+            "answer": answer
+        })
+
+    except Exception as e:
+
+        print("ERROR:", e)
+
+        return jsonify({
+            "error": str(e)
+        }), 500
+
+
+# --------------------------------------------------
+# START FLASK
+# --------------------------------------------------
+
+if __name__ == "__main__":
+
+    app.run(
+        host="0.0.0.0",
+        port=5000,
+        debug=True
+    )
+
+    ###########################################
+
