@@ -121,7 +121,13 @@ aws bedrock list-foundation-models \
   --output text
 
 ############################################
+aws bedrock list-inference-profiles \
+  --region ap-south-1 \
+  --profile user1 \
+  --query 'inferenceProfileSummaries[].{ID:inferenceProfileId,Name:inferenceProfileName,Status:status,Models:models}' \
+  --output table
 
+#############################################
 
 
 
