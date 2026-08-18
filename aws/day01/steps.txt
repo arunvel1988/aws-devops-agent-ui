@@ -22,6 +22,7 @@ aws --version
       "Action": [
         "bedrock:InvokeModel",
         "bedrock:ListFoundationModels",
+        "bedrock:ListInferenceProfiles",
         "bedrock:InvokeModelWithResponseStream"
       ],
       "Resource": "*"
@@ -104,5 +105,23 @@ aws bedrock list-foundation-models \
   --profile user1
 
 #####################################
+aws bedrock list-foundation-models \
+  --region ap-south-1 \
+  --profile user1 \
+  --query 'modelSummaries[].{ID:modelId,Name:modelName,Provider:providerName,Input:inputModalities,Output:outputModalities}' \
+  --output table
+
+##########################################
+
+
+aws bedrock list-foundation-models \
+  --region ap-south-1 \
+  --profile user1 \
+  --query 'modelSummaries[].modelId' \
+  --output text
+
+############################################
+
+
 
 
