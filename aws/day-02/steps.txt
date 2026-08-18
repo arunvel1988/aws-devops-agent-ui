@@ -82,8 +82,8 @@ def execute_tool(name, arguments):
 
     #############################
 
-
-    from openai import OpenAI
+nano agent/core.py
+from openai import OpenAI
 import json
 
 from agent.registry import TOOL_DEFINITIONS
