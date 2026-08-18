@@ -155,6 +155,236 @@ PY
 
 ######################################
 
+nano devops_agent.py
+
+import boto3
+
+# AWS connection
+aws = boto3.Session(profile_name="user1", region_name="ap-south-1")
+
+ec2 = aws.client("ec2")
+
+
+def get_ec2_instances():
+    response = ec2.describe_instances()
+
+    instances = []
+
+    for reservation in response["Reservations"]:
+        for instance in reservation["Instances"]:
+            instances.append({
+                "instance_id": instance["InstanceId"],
+                "state": instance["State"]["Name"],
+                "instance_type": instance["InstanceType"],
+                "private_ip": instance.get("PrivateIpAddress"),
+                "public_ip": instance.get("PublicIpAddress")
+            })
+
+    return instances
+
+
+if __name__ == "__main__":
+    instances = get_ec2_instances()
+
+    for instance in instances:
+        print(instance)
+
+#######################################
+
+pip install boto3
+
+python devops_agent.py
+
+#####################################
+
+from openai import OpenAI
+import boto3
+import json
+
+# -----------------------------
+# Bedrock Mantle / GPT-OSS
+# -----------------------------
+
+client = OpenAI()
+
+
+# -----------------------------
+# AWS
+# -----------------------------
+
+aws = boto3.Session(
+    profile_name="user1",
+    region_name="ap-south-1"
+)
+
+ec2 = aws.client("ec2")
+
+
+# -----------------------------
+# AWS TOOL
+# -----------------------------
+
+def get_ec2_instances():
+    response = ec2.describe_instances()
+
+    instances = []
+
+    for reservation in response["Reservations"]:
+        for instance in reservation["Instances"]:
+            instances.append({
+                "instance_id": instance["InstanceId"],
+                "state": instance["State"]["Name"],
+                "instance_type": instance["InstanceType"],
+                "private_ip": instance.get("PrivateIpAddress"),
+                "public_ip": instance.get("PublicIpAddress")
+            })
+
+    return instances
+
+
+# -----------------------------
+# TOOL DEFINITION
+# -----------------------------
+
+tools = [
+    {
+        "type": "function",
+        "name": "get_ec2_instances",
+        "description": "Get information about EC2 instances in the AWS account.",
+        "parameters": {
+            "type": "object",
+            "properties": {},
+            "required": []
+        }
+    }
+]
+
+
+# -----------------------------
+# ASK THE AGENT
+# -----------------------------
+
+response = client.responses.create(
+    model="openai.gpt-oss-120b",
+    input=[
+        {
+            "role": "user",
+            "content": "Check my AWS EC2 instances and tell me which ones are running."
+        }
+    ],
+    tools=tools
+)
+
+print(response)
+
+##############################################
+
+from openai import OpenAI
+import boto3
+import json
+
+client = OpenAI()
+
+aws = boto3.Session(
+    profile_name="user1",
+    region_name="ap-south-1"
+)
+
+ec2 = aws.client("ec2")
+
+
+def get_ec2_instances():
+    response = ec2.describe_instances()
+
+    instances = []
+
+    for reservation in response["Reservations"]:
+        for instance in reservation["Instances"]:
+            instances.append({
+                "instance_id": instance["InstanceId"],
+                "state": instance["State"]["Name"],
+                "instance_type": instance["InstanceType"],
+                "private_ip": instance.get("PrivateIpAddress"),
+                "public_ip": instance.get("PublicIpAddress")
+            })
+
+    return instances
+
+
+tools = [
+    {
+        "type": "function",
+        "name": "get_ec2_instances",
+        "description": "Get information about EC2 instances in the AWS account.",
+        "parameters": {
+            "type": "object",
+            "properties": {},
+            "required": []
+        }
+    }
+]
+
+
+# ------------------------------------------------
+# STEP 1: Ask the model
+# ------------------------------------------------
+
+response = client.responses.create(
+    model="openai.gpt-oss-120b",
+    input=[
+        {
+            "role": "user",
+            "content": "Check my AWS EC2 instances and tell me which ones are running."
+        }
+    ],
+    tools=tools
+)
+
+
+# ------------------------------------------------
+# STEP 2: Look for tool calls
+# ------------------------------------------------
+
+tool_outputs = []
+
+for item in response.output:
+
+    if item.type == "function_call":
+
+        print("Agent requested tool:", item.name)
+
+        if item.name == "get_ec2_instances":
+
+            result = get_ec2_instances()
+
+            print("AWS tool result:")
+            print(result)
+
+            tool_outputs.append({
+                "type": "function_call_output",
+                "call_id": item.call_id,
+                "output": json.dumps(result)
+            })
+
+
+# ------------------------------------------------
+# STEP 3: Send AWS result back to model
+# ------------------------------------------------
+
+if tool_outputs:
+
+    final_response = client.responses.create(
+        model="openai.gpt-oss-120b",
+        previous_response_id=response.id,
+        input=tool_outputs,
+        tools=tools
+    )
+
+    print("\nFINAL AGENT RESPONSE:")
+    print(final_response.output_text)
+
+##############################################
+
 
 
 
