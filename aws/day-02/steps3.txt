@@ -1,0 +1,242 @@
+mkdir -p /home/arun/memory
+
+nano /home/arun/memory/store.py
+
+import sqlite3
+import os
+
+
+DB_PATH = "/home/arun/memory/agent_memory.db"
+
+
+def get_connection():
+    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
+
+    conn = sqlite3.connect(DB_PATH)
+
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS conversations (
+            session_id TEXT PRIMARY KEY,
+            response_id TEXT
+        )
+    """)
+
+    conn.commit()
+
+    return conn
+
+
+def get_response_id(session_id):
+
+    conn = get_connection()
+
+    cursor = conn.execute(
+        """
+        SELECT response_id
+        FROM conversations
+        WHERE session_id = ?
+        """,
+        (session_id,)
+    )
+
+    row = cursor.fetchone()
+
+    conn.close()
+
+    if row:
+        return row[0]
+
+    return None
+
+
+def save_response_id(session_id, response_id):
+
+    conn = get_connection()
+
+    conn.execute(
+        """
+        INSERT INTO conversations (session_id, response_id)
+        VALUES (?, ?)
+        ON CONFLICT(session_id)
+        DO UPDATE SET response_id = excluded.response_id
+        """,
+        (session_id, response_id)
+    )
+
+    conn.commit()
+
+    conn.close()
+
+
+def clear_session(session_id):
+
+    conn = get_connection()
+
+    conn.execute(
+        """
+        DELETE FROM conversations
+        WHERE session_id = ?
+        """,
+        (session_id,)
+    )
+
+    conn.commit()
+
+    conn.close()
+
+
+
+#################################################    #############
+
+nano /home/arun/agent/core.py
+
+from openai import OpenAI
+import json
+
+from agent.registry import TOOL_DEFINITIONS
+from agent.executor import execute_tool
+
+from memory.store import (
+    get_response_id,
+    save_response_id
+)
+
+
+client = OpenAI()
+
+
+def run_agent(user_message, session_id="default"):
+
+    # -----------------------------------------------
+    # Load persistent conversation memory
+    # -----------------------------------------------
+
+    previous_response_id = get_response_id(session_id)
+
+    print(
+        f"Session: {session_id}"
+    )
+
+    print(
+        f"Previous response: {previous_response_id}"
+    )
+
+    # -----------------------------------------------
+    # Send message to agent
+    # -----------------------------------------------
+
+    if previous_response_id:
+
+        response = client.responses.create(
+            model="openai.gpt-oss-120b",
+
+            previous_response_id=previous_response_id,
+
+            input=[
+                {
+                    "role": "user",
+                    "content": user_message
+                }
+            ],
+
+            tools=TOOL_DEFINITIONS
+        )
+
+    else:
+
+        response = client.responses.create(
+            model="openai.gpt-oss-120b",
+
+            input=[
+                {
+                    "role": "user",
+                    "content": user_message
+                }
+            ],
+
+            tools=TOOL_DEFINITIONS
+        )
+
+    # -----------------------------------------------
+    # Execute tools requested by the agent
+    # -----------------------------------------------
+
+    tool_outputs = []
+
+    for item in response.output:
+
+        if item.type == "function_call":
+
+            print(
+                f"Agent requested tool: {item.name}"
+            )
+
+            arguments = json.loads(
+                item.arguments
+            )
+
+            result = execute_tool(
+                item.name,
+                arguments
+            )
+
+            print(
+                "AWS tool result:"
+            )
+
+            print(result)
+
+            tool_outputs.append({
+
+                "type":
+                    "function_call_output",
+
+                "call_id":
+                    item.call_id,
+
+                "output":
+                    json.dumps(result)
+            })
+
+    # -----------------------------------------------
+    # Send tool results back to model
+    # -----------------------------------------------
+
+    if tool_outputs:
+
+        final_response = client.responses.create(
+
+            model="openai.gpt-oss-120b",
+
+            previous_response_id=response.id,
+
+            input=tool_outputs,
+
+            tools=TOOL_DEFINITIONS
+        )
+
+        # -------------------------------------------
+        # Persist final response ID
+        # -------------------------------------------
+
+        save_response_id(
+            session_id,
+            final_response.id
+        )
+
+        return final_response.output_text
+
+    # -----------------------------------------------
+    # No tool required
+    # -----------------------------------------------
+
+    save_response_id(
+        session_id,
+        response.id
+    )
+
+    return response.output_text
+
+
+    ########################################################
+
