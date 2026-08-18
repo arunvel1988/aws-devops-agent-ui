@@ -190,10 +190,10 @@ if __name__ == "__main__":
     ##############################################
 
 
-    templates/index.html
+nano templates/index.html
 
 
-    <!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 
 <head>
