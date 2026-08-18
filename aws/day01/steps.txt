@@ -99,4 +99,10 @@ aws sts get-caller-identity --profile user1
 
 ########################################
 
+aws bedrock list-foundation-models \
+  --region ap-south-1 \
+  --profile user1
+
+#####################################
+
 
