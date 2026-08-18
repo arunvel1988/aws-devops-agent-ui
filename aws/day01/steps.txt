@@ -17,18 +17,13 @@ aws --version
   "Version": "2012-10-17",
   "Statement": [
     {
-      "Sid": "Bedrock",
+      "Sid": "FullBedrockAccess",
       "Effect": "Allow",
-      "Action": [
-        "bedrock:InvokeModel",
-        "bedrock:ListFoundationModels",
-        "bedrock:ListInferenceProfiles",
-        "bedrock:InvokeModelWithResponseStream"
-      ],
+      "Action": "bedrock:*",
       "Resource": "*"
     },
     {
-      "Sid": "EC2Read",
+      "Sid": "EC2ReadOnly",
       "Effect": "Allow",
       "Action": [
         "ec2:DescribeInstances",
@@ -42,7 +37,7 @@ aws --version
       "Resource": "*"
     },
     {
-      "Sid": "CloudWatch",
+      "Sid": "CloudWatchAccess",
       "Effect": "Allow",
       "Action": [
         "cloudwatch:GetMetricData",
@@ -55,7 +50,7 @@ aws --version
       "Resource": "*"
     },
     {
-      "Sid": "CloudWatchLogs",
+      "Sid": "CloudWatchLogsAccess",
       "Effect": "Allow",
       "Action": [
         "logs:DescribeLogGroups",
@@ -68,7 +63,7 @@ aws --version
       "Resource": "*"
     },
     {
-      "Sid": "SSMRead",
+      "Sid": "SSMInvestigation",
       "Effect": "Allow",
       "Action": [
         "ssm:DescribeInstanceInformation",
