@@ -131,6 +131,31 @@ aws bedrock list-inference-profiles \
 
 #############################################
 
+sudo apt update
+sudo apt install -y python3 python3-pip python3-venv
+
+python3 -m venv ~/bedrock-env
+
+source ~/bedrock-env/bin/activate
+
+pip install openai
+
+python3 - <<'PY'
+from openai import OpenAI
+
+client = OpenAI()
+
+response = client.responses.create(
+    model="openai.gpt-oss-120b",
+    input="Say hello in one sentence."
+)
+
+print(response.output_text)
+PY
+
+######################################
+
+
 
 
 
