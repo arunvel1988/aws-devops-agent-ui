@@ -1,0 +1,135 @@
+#################################################
+
+mkdir -p /home/arun/tools/cloudwatch
+touch /home/arun/tools/cloudwatch/__init__.py
+
+nano /home/arun/tools/cloudwatch/metrics.py
+
+import boto3
+from datetime import datetime, timedelta, timezone
+
+
+aws = boto3.Session(
+    profile_name="user1",
+    region_name="ap-south-1"
+)
+
+cloudwatch = aws.client("cloudwatch")
+
+
+def get_cpu_utilization(instance_id):
+
+    end_time = datetime.now(timezone.utc)
+
+    start_time = end_time - timedelta(minutes=30)
+
+    response = cloudwatch.get_metric_statistics(
+        Namespace="AWS/EC2",
+        MetricName="CPUUtilization",
+
+        Dimensions=[
+            {
+                "Name": "InstanceId",
+                "Value": instance_id
+            }
+        ],
+
+        StartTime=start_time,
+        EndTime=end_time,
+
+        Period=300,
+
+        Statistics=[
+            "Average",
+            "Maximum"
+        ]
+    )
+
+    datapoints = response.get("Datapoints", [])
+
+    datapoints.sort(
+        key=lambda x: x["Timestamp"]
+    )
+
+    result = []
+
+    for point in datapoints:
+
+        result.append({
+            "timestamp": point["Timestamp"].isoformat(),
+            "average": point.get("Average"),
+            "maximum": point.get("Maximum")
+        })
+
+    return result
+
+
+    #########################################
+nano /home/arun/agent/registry.py
+
+from tools.ec2.instances import get_ec2_instances
+from tools.cloudwatch.metrics import get_cpu_utilization
+
+
+TOOL_FUNCTIONS = {
+
+    "get_ec2_instances":
+        get_ec2_instances,
+
+    "get_cpu_utilization":
+        get_cpu_utilization
+}
+
+
+TOOL_DEFINITIONS = [
+
+    {
+        "type": "function",
+
+        "name": "get_ec2_instances",
+
+        "description":
+            "Get information about EC2 instances in the AWS account.",
+
+        "parameters": {
+            "type": "object",
+
+            "properties": {},
+
+            "required": []
+        }
+    },
+
+    {
+        "type": "function",
+
+        "name": "get_cpu_utilization",
+
+        "description":
+            "Get the CPU utilization metrics for an EC2 instance for the last 30 minutes.",
+
+        "parameters": {
+
+            "type": "object",
+
+            "properties": {
+
+                "instance_id": {
+                    "type": "string",
+
+                    "description":
+                        "The EC2 instance ID, for example i-1234567890abcdef0."
+                }
+
+            },
+
+            "required": [
+                "instance_id"
+            ]
+        }
+    }
+]
+
+
+########################################################
+
