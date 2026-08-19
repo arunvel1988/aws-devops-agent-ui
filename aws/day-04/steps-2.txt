@@ -1,0 +1,18 @@
+##########################################################################
+
+
+aws events create-connection \
+  --name GCP-Flask-Connection \
+  --authorization-type API_KEY \
+  --auth-parameters '{
+    "ApiKeyAuthParameters": {
+      "ApiKeyName": "X-DevOps-Agent-Key",
+      "ApiKeyValue": "devops123"
+    }
+  }' \
+  --region ap-south-1 \
+  --profile user1
+
+#############################################################
+
+
