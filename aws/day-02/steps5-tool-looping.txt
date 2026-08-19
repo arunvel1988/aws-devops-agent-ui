@@ -66,7 +66,7 @@ def run_agent(user_message, session_id="default"):
         tool_outputs = []
 
         # ----------------------------------------------
-        # Look for tool calls
+        # Find tool calls
         # ----------------------------------------------
 
         for item in response.output:
@@ -77,16 +77,16 @@ def run_agent(user_message, session_id="default"):
                     f"Agent requested tool: {item.name}"
                 )
 
-                # Parse arguments
+                # Parse tool arguments
                 arguments = json.loads(
-                    item.arguments
+                    item.arguments or "{}"
                 )
 
                 print(
                     f"Tool arguments: {arguments}"
                 )
 
-                # Execute AWS tool
+                # Execute tool
                 result = execute_tool(
                     item.name,
                     arguments
@@ -95,28 +95,24 @@ def run_agent(user_message, session_id="default"):
                 print("AWS tool result:")
                 print(result)
 
-                # Prepare result for model
-                tool_outputs.append({
-
-                    "type":
-                        "function_call_output",
-
-                    "call_id":
-                        item.call_id,
-
-                    "output":
-                        json.dumps(result)
+                # Add tool result
+                tool_outputs.append(
+                    {
+                        "type": "function_call_output",
+                        "call_id": item.call_id,
+                        "output": json.dumps(result)
+                    }
                 )
 
         # ----------------------------------------------
-        # No more tools required
+        # No tool calls
+        # Agent has finished
         # ----------------------------------------------
 
         if not tool_outputs:
 
             print("Agent finished tool execution.")
 
-            # Save final response for conversation memory
             save_response_id(
                 session_id,
                 response.id
@@ -129,16 +125,11 @@ def run_agent(user_message, session_id="default"):
         # ----------------------------------------------
 
         response = client.responses.create(
-
             model="openai.gpt-oss-120b",
-
             previous_response_id=response.id,
-
             input=tool_outputs,
-
             tools=TOOL_DEFINITIONS
         )
-
 
 
 ############################################################################
