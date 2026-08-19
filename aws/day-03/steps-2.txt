@@ -1,0 +1,137 @@
+#########################################################################
+
+nano /home/arun/tools/ssm/actions.py
+
+import boto3
+import time
+
+
+aws = boto3.Session(
+    profile_name="user1",
+    region_name="ap-south-1"
+)
+
+ssm = aws.client("ssm")
+
+
+def kill_process(instance_id, pid):
+    """
+    Terminate a specific process on an EC2 instance.
+
+    This function should ONLY be called after
+    explicit human approval.
+    """
+
+    command = f"kill -TERM {int(pid)}"
+
+    response = ssm.send_command(
+        InstanceIds=[instance_id],
+
+        DocumentName="AWS-RunShellScript",
+
+        Parameters={
+            "commands": [command]
+        }
+    )
+
+    command_id = response["Command"]["CommandId"]
+
+    time.sleep(2)
+
+    result = ssm.get_command_invocation(
+        CommandId=command_id,
+        InstanceId=instance_id
+    )
+
+    return {
+        "instance_id": instance_id,
+        "pid": pid,
+        "command_id": command_id,
+        "status": result.get("Status"),
+        "stdout": result.get("StandardOutputContent"),
+        "stderr": result.get("StandardErrorContent")
+    }
+
+    ############################################
+
+
+
+
+
+nano tools/registry.py
+
+
+from tools.ec2.instances import get_ec2_instances
+from tools.cloudwatch.metrics import get_cpu_utilization
+from tools.ssm.processes import get_top_processes
+
+
+TOOL_FUNCTIONS = {
+
+    "get_ec2_instances":
+        get_ec2_instances,
+
+    "get_cpu_utilization":
+        get_cpu_utilization,
+
+    "get_top_processes":
+        get_top_processes
+}
+
+
+TOOL_DEFINITIONS = [
+
+    {
+        "type": "function",
+        "name": "get_ec2_instances",
+        "description":
+            "Get information about EC2 instances in the AWS account.",
+        "parameters": {
+            "type": "object",
+            "properties": {},
+            "required": []
+        }
+    },
+
+    {
+        "type": "function",
+        "name": "get_cpu_utilization",
+        "description":
+            "Get CPU utilization metrics for an EC2 instance.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "instance_id": {
+                    "type": "string",
+                    "description":
+                        "The EC2 instance ID."
+                }
+            },
+            "required": ["instance_id"]
+        }
+    },
+
+    {
+        "type": "function",
+        "name": "get_top_processes",
+        "description":
+            "Get the top CPU-consuming processes running on an EC2 instance using AWS Systems Manager.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "instance_id": {
+                    "type": "string",
+                    "description":
+                        "The EC2 instance ID."
+                }
+            },
+            "required": ["instance_id"]
+        }
+    }
+]
+
+
+
+############################################################
+
+
