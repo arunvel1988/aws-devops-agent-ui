@@ -64,6 +64,117 @@ aws events create-connection   --name GCP-Flask-Connection   --authorization-typ
 
 #############################################################
 
+sudo snap install ngrok
+
+ngrok config add-authtoken YOUR_TOKEN
+
+ngrok http 5000
+
+#############################################################
+
+aws events create-api-destination \
+  --name GCP-Flask-Incident \
+  --connection-arn "arn:aws:events:ap-south-1:710969344377:connection/GCP-Flask-Connection/9660c25c-03e6-43ec-b957-91800be15bff" \
+  --invocation-endpoint "https://5a04-34-93-2-169.ngrok-free.app/incident" \
+  --http-method POST \
+  --invocation-rate-limit-per-second 10 \
+  --region ap-south-1 \
+  --profile user1
+
+
+######################################################
+
+aws events describe-rule \
+  --name EC2-High-CPU-Incident \
+  --region ap-south-1 \
+  --profile user1
+
+
+#########################################
+
+aws iam create-role \
+  --role-name EventBridge-GCP-Flask-Role \
+  --assume-role-policy-document '{
+    "Version": "2012-10-17",
+    "Statement": [
+      {
+        "Effect": "Allow",
+        "Principal": {
+          "Service": "events.amazonaws.com"
+        },
+        "Action": "sts:AssumeRole"
+      }
+    ]
+  }' \
+  --profile user1
+
+
+################################################
+
+
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "AllowEventBridgeRoleCreation",
+      "Effect": "Allow",
+      "Action": [
+        "iam:CreateRole",
+        "iam:PutRolePolicy",
+        "iam:GetRole",
+        "iam:PassRole"
+      ],
+      "Resource": "*"
+    }
+  ]
+}
+
+
+###############################################
+
+aws iam put-role-policy \
+  --role-name EventBridge-GCP-Flask-Role \
+  --policy-name Invoke-GCP-Flask \
+  --policy-document '{
+    "Version": "2012-10-17",
+    "Statement": [
+      {
+        "Effect": "Allow",
+        "Action": "events:InvokeApiDestination",
+        "Resource": "arn:aws:events:ap-south-1:710969344377:api-destination/GCP-Flask-Incident/20cfbeee-abe8-4f8e-b6b8-e809c1fbed02"
+      }
+    ]
+  }' \
+  --profile user1
+
+#######################################################
+
+aws events put-targets \
+  --rule EC2-High-CPU-Incident \
+  --targets '[
+    {
+      "Id": "GCP-Flask-Incident",
+      "Arn": "arn:aws:events:ap-south-1:710969344377:api-destination/GCP-Flask-Incident/20cfbeee-abe8-4f8e-b6b8-e809c1fbed02",
+      "RoleArn": "arn:aws:iam::710969344377:role/EventBridge-GCP-Flask-Role"
+    }
+  ]' \
+  --region ap-south-1 \
+  --profile user1
+
+####################################################
+
+
+for i in {1..2}; do while :; do :; done & done
+
+################################
+
+
+
+
+
+
+
+
 
 
 
