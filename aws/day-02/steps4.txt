@@ -1,0 +1,163 @@
+##########################################################################################
+
+mkdir -p /home/arun/tools/cloudwatch
+
+nano /home/arun/tools/cloudwatch/alarms.py
+
+import boto3
+
+
+aws = boto3.Session(
+    profile_name="user1",
+    region_name="ap-south-1"
+)
+
+cloudwatch = aws.client("cloudwatch")
+
+
+def get_cloudwatch_alarms():
+    response = cloudwatch.describe_alarms()
+
+    alarms = []
+
+    for alarm in response.get("MetricAlarms", []):
+
+        alarms.append({
+            "name": alarm.get("AlarmName"),
+            "state": alarm.get("StateValue"),
+            "reason": alarm.get("StateReason"),
+            "metric": alarm.get("MetricName"),
+            "namespace": alarm.get("Namespace"),
+            "threshold": alarm.get("Threshold"),
+            "comparison": alarm.get("ComparisonOperator")
+        })
+
+    return alarms
+
+#################################################################
+
+
+nano /home/arun/agent/registry.py
+
+from tools.ec2.instances import get_ec2_instances
+from tools.cloudwatch.metrics import get_cpu_utilization
+from tools.cloudwatch.alarms import get_cloudwatch_alarms
+
+
+# ============================================================
+# TOOL FUNCTIONS
+# ============================================================
+
+TOOL_FUNCTIONS = {
+
+    "get_ec2_instances":
+        get_ec2_instances,
+
+    "get_cpu_utilization":
+        get_cpu_utilization,
+
+    "get_cloudwatch_alarms":
+        get_cloudwatch_alarms
+}
+
+
+# ============================================================
+# TOOL DEFINITIONS
+# ============================================================
+
+TOOL_DEFINITIONS = [
+
+    # --------------------------------------------------------
+    # EC2
+    # --------------------------------------------------------
+
+    {
+        "type": "function",
+
+        "name": "get_ec2_instances",
+
+        "description":
+            "Get information about EC2 instances in the AWS account, "
+            "including instance ID, state, instance type, private IP "
+            "and public IP.",
+
+        "parameters": {
+
+            "type": "object",
+
+            "properties": {},
+
+            "required": []
+        }
+    },
+
+
+    # --------------------------------------------------------
+    # CPU UTILIZATION
+    # --------------------------------------------------------
+
+    {
+        "type": "function",
+
+        "name": "get_cpu_utilization",
+
+        "description":
+            "Get CPU utilization metrics for an EC2 instance "
+            "for the last 30 minutes.",
+
+        "parameters": {
+
+            "type": "object",
+
+            "properties": {
+
+                "instance_id": {
+
+                    "type": "string",
+
+                    "description":
+                        "The EC2 instance ID, for example "
+                        "i-1234567890abcdef0."
+                }
+            },
+
+            "required": [
+                "instance_id"
+            ]
+        }
+    },
+
+
+    # --------------------------------------------------------
+    # CLOUDWATCH ALARMS
+    # --------------------------------------------------------
+
+    {
+        "type": "function",
+
+        "name": "get_cloudwatch_alarms",
+
+        "description":
+            "Get CloudWatch alarms in the AWS account, "
+            "including their name, current state, metric, "
+            "threshold and reason.",
+
+        "parameters": {
+
+            "type": "object",
+
+            "properties": {},
+
+            "required": []
+        }
+    }
+]
+
+#################################################################
+
+
+cd /home/arun
+python3 app.py
+
+###########################################
+
