@@ -2,6 +2,7 @@ nano /home/arun/agent/core.py
 
 from openai import OpenAI
 import json
+import re
 
 from agent.registry import TOOL_DEFINITIONS
 from agent.executor import execute_tool
@@ -11,107 +12,425 @@ from memory.store import (
     save_response_id
 )
 
-
 client = OpenAI()
 
 
-def run_agent(user_message, session_id="default"):
+SYSTEM_INSTRUCTIONS = """
+You are an AWS DevOps Agent.
 
-    # --------------------------------------------------
-    # Load persistent conversation memory
-    # --------------------------------------------------
+You have access to AWS tools.
 
-    previous_response_id = get_response_id(session_id)
+IMPORTANT RULES:
 
-    print(f"Session: {session_id}")
-    print(f"Previous response: {previous_response_id}")
+1. AWS tools provide LIVE infrastructure data.
 
-    # --------------------------------------------------
-    # First request
-    # --------------------------------------------------
+2. NEVER invent AWS metrics.
+
+3. NEVER use an old CPU, memory, alarm, instance state,
+   or other infrastructure value from conversation history
+   when fresh tool data is available.
+
+4. When a tool result is provided, treat that result as
+   authoritative.
+
+5. Conversation memory is only for context.
+
+6. For current AWS questions, always prefer fresh AWS data.
+
+7. Explain AWS results clearly and simply.
+
+8. If the user asks for the latest/current CPU and a tool
+   result is provided, use that exact result in your answer.
+"""
+
+
+# ==========================================================
+# LIVE CPU REQUEST DETECTION
+# ==========================================================
+
+def is_cpu_request(message):
+
+    text = message.lower()
+
+    cpu_words = [
+        "cpu",
+        "cpu utilization",
+        "cpu usage",
+        "processor utilization"
+    ]
+
+    live_words = [
+        "latest",
+        "current",
+        "now",
+        "recent",
+        "last",
+        "today",
+        "running instance",
+        "instance"
+    ]
+
+    has_cpu = any(
+        word in text
+        for word in cpu_words
+    )
+
+    has_live_context = any(
+        word in text
+        for word in live_words
+    )
+
+    return has_cpu and has_live_context
+
+
+# ==========================================================
+# EXTRACT INSTANCE ID
+# ==========================================================
+
+def extract_instance_id(message):
+
+    match = re.search(
+        r"i-[0-9a-fA-F]{8,17}",
+        message
+    )
+
+    if match:
+        return match.group(0)
+
+    return None
+
+
+# ==========================================================
+# FIND RUNNING INSTANCE
+# ==========================================================
+
+def get_running_instance():
+
+    result = execute_tool(
+        "get_ec2_instances",
+        {}
+    )
+
+    if not result:
+        return None
+
+    # Your EC2 tool returns a list
+    for instance in result:
+
+        if instance.get("state") == "running":
+
+            return instance.get("instance_id")
+
+    return None
+
+
+# ==========================================================
+# RUN AGENT
+# ==========================================================
+
+def run_agent(
+    user_message,
+    session_id="default"
+):
+
+    print("\n========================================")
+    print("AWS DEVOPS AGENT")
+    print("========================================")
+
+    print(
+        f"Session ID: {session_id}"
+    )
+
+    # ------------------------------------------------------
+    # Persistent memory
+    # ------------------------------------------------------
+
+    previous_response_id = get_response_id(
+        session_id
+    )
+
+    print(
+        f"Previous response ID: "
+        f"{previous_response_id}"
+    )
+
+    # ======================================================
+    # SPECIAL CASE:
+    # LIVE CPU REQUEST
+    # ======================================================
+
+    if is_cpu_request(user_message):
+
+        print("\nLIVE CPU REQUEST DETECTED")
+
+        # --------------------------------------------------
+        # First try to get instance ID from user message
+        # --------------------------------------------------
+
+        instance_id = extract_instance_id(
+            user_message
+        )
+
+        # --------------------------------------------------
+        # If not supplied, find running instance
+        # --------------------------------------------------
+
+        if not instance_id:
+
+            print(
+                "No instance ID supplied."
+            )
+
+            print(
+                "Finding running EC2 instance..."
+            )
+
+            instance_id = get_running_instance()
+
+        # --------------------------------------------------
+        # No instance found
+        # --------------------------------------------------
+
+        if not instance_id:
+
+            return (
+                "I could not find a running EC2 "
+                "instance to check."
+            )
+
+        print(
+            f"Checking CPU for: {instance_id}"
+        )
+
+        # --------------------------------------------------
+        # Get FRESH CloudWatch data
+        # --------------------------------------------------
+
+        cpu_result = execute_tool(
+            "get_cpu_utilization",
+            {
+                "instance_id": instance_id
+            }
+        )
+
+        print("\nFRESH AWS CPU RESULT:")
+
+        print(
+            json.dumps(
+                cpu_result,
+                indent=2,
+                default=str
+            )
+        )
+
+        # --------------------------------------------------
+        # Ask LLM to explain fresh result
+        # --------------------------------------------------
+
+        prompt = f"""
+The user asked:
+
+{user_message}
+
+We just queried AWS CloudWatch directly.
+
+This is the FRESH AWS result:
+
+{json.dumps(cpu_result, indent=2, default=str)}
+
+IMPORTANT:
+
+Use ONLY the fresh AWS result above for CPU values.
+
+Do not use CPU values from previous conversation.
+
+Answer the user's question concisely.
+"""
+
+        response_args = {
+            "model": "openai.gpt-oss-120b",
+            "instructions": SYSTEM_INSTRUCTIONS,
+            "input": [
+                {
+                    "role": "user",
+                    "content": prompt
+                }
+            ]
+        }
+
+        # --------------------------------------------------
+        # Keep memory connection
+        # --------------------------------------------------
+
+        if previous_response_id:
+
+            response_args[
+                "previous_response_id"
+            ] = previous_response_id
+
+        response = client.responses.create(
+            **response_args
+        )
+
+        # --------------------------------------------------
+        # Save conversation state
+        # --------------------------------------------------
+
+        save_response_id(
+            session_id,
+            response.id
+        )
+
+        print("\nCPU RESPONSE COMPLETE")
+
+        return response.output_text
+
+    # ======================================================
+    # NORMAL AGENT FLOW
+    # ======================================================
+
+    request_args = {
+
+        "model":
+            "openai.gpt-oss-120b",
+
+        "instructions":
+            SYSTEM_INSTRUCTIONS,
+
+        "input": [
+            {
+                "role": "user",
+                "content": user_message
+            }
+        ],
+
+        "tools":
+            TOOL_DEFINITIONS
+    }
+
+    # ------------------------------------------------------
+    # Continue persistent conversation
+    # ------------------------------------------------------
 
     if previous_response_id:
 
-        response = client.responses.create(
-            model="openai.gpt-oss-120b",
-            previous_response_id=previous_response_id,
-            input=[
-                {
-                    "role": "user",
-                    "content": user_message
-                }
-            ],
-            tools=TOOL_DEFINITIONS
-        )
+        request_args[
+            "previous_response_id"
+        ] = previous_response_id
 
-    else:
+    # ------------------------------------------------------
+    # First LLM call
+    # ------------------------------------------------------
 
-        response = client.responses.create(
-            model="openai.gpt-oss-120b",
-            input=[
-                {
-                    "role": "user",
-                    "content": user_message
-                }
-            ],
-            tools=TOOL_DEFINITIONS
-        )
+    response = client.responses.create(
+        **request_args
+    )
 
-    # --------------------------------------------------
-    # TOOL-CALLING LOOP
-    # --------------------------------------------------
+    # ======================================================
+    # TOOL LOOP
+    # ======================================================
 
     while True:
 
         tool_outputs = []
 
-        # ----------------------------------------------
-        # Find tool calls
-        # ----------------------------------------------
+        # --------------------------------------------------
+        # Inspect model output
+        # --------------------------------------------------
 
         for item in response.output:
 
-            if item.type == "function_call":
+            if item.type != "function_call":
 
-                print(
-                    f"Agent requested tool: {item.name}"
-                )
+                continue
 
-                # Parse tool arguments
+            print(
+                f"\nAgent requested tool: "
+                f"{item.name}"
+            )
+
+            # ------------------------------------------------
+            # Parse arguments
+            # ------------------------------------------------
+
+            try:
+
                 arguments = json.loads(
                     item.arguments or "{}"
                 )
 
-                print(
-                    f"Tool arguments: {arguments}"
+            except json.JSONDecodeError:
+
+                arguments = {}
+
+            print(
+                "Tool arguments:"
+            )
+
+            print(arguments)
+
+            # ------------------------------------------------
+            # Execute tool
+            # ------------------------------------------------
+
+            result = execute_tool(
+                item.name,
+                arguments
+            )
+
+            print(
+                "\nAWS TOOL RESULT:"
+            )
+
+            print(
+                json.dumps(
+                    result,
+                    indent=2,
+                    default=str
                 )
+            )
 
-                # Execute tool
-                result = execute_tool(
-                    item.name,
-                    arguments
-                )
+            # ------------------------------------------------
+            # Send result back
+            # ------------------------------------------------
 
-                print("AWS tool result:")
-                print(result)
+            tool_outputs.append(
+                {
+                    "type":
+                        "function_call_output",
 
-                # Add tool result
-                tool_outputs.append(
-                    {
-                        "type": "function_call_output",
-                        "call_id": item.call_id,
-                        "output": json.dumps(result)
-                    }
-                )
+                    "call_id":
+                        item.call_id,
 
-        # ----------------------------------------------
-        # No tool calls
-        # Agent has finished
-        # ----------------------------------------------
+                    "output":
+                        json.dumps(
+                            result,
+                            default=str
+                        )
+                }
+            )
+
+        # --------------------------------------------------
+        # Agent finished
+        # --------------------------------------------------
 
         if not tool_outputs:
 
-            print("Agent finished tool execution.")
+            print(
+                "\n========================================"
+            )
+
+            print(
+                "AGENT FINISHED"
+            )
+
+            print(
+                "Response ID:"
+            )
+
+            print(
+                response.id
+            )
 
             save_response_id(
                 session_id,
@@ -120,15 +439,30 @@ def run_agent(user_message, session_id="default"):
 
             return response.output_text
 
-        # ----------------------------------------------
-        # Send tool results back to model
-        # ----------------------------------------------
+        # --------------------------------------------------
+        # Send fresh tool results
+        # --------------------------------------------------
+
+        print(
+            "\nSENDING FRESH TOOL RESULT TO MODEL"
+        )
 
         response = client.responses.create(
-            model="openai.gpt-oss-120b",
-            previous_response_id=response.id,
-            input=tool_outputs,
-            tools=TOOL_DEFINITIONS
+
+            model=
+                "openai.gpt-oss-120b",
+
+            instructions=
+                SYSTEM_INSTRUCTIONS,
+
+            previous_response_id=
+                response.id,
+
+            input=
+                tool_outputs,
+
+            tools=
+                TOOL_DEFINITIONS
         )
 
 
