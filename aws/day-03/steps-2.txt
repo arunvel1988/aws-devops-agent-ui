@@ -58,7 +58,7 @@ def kill_process(instance_id, pid):
 
 
 
-nano tools/registry.py
+nano agent/registry.py
 
 
 from tools.ec2.instances import get_ec2_instances
