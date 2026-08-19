@@ -1,0 +1,23 @@
+############################################################################
+### AUTOMATIC INCIDENT INVESTIGATION ##########################################
+
+aws cloudwatch put-metric-alarm \
+  --alarm-name "EC2-High-CPU" \
+  --alarm-description "Trigger when EC2 CPU is greater than 40%" \
+  --metric-name CPUUtilization \
+  --namespace AWS/EC2 \
+  --statistic Average \
+  --period 60 \
+  --threshold 40 \
+  --comparison-operator GreaterThanThreshold \
+  --evaluation-periods 1 \
+  --datapoints-to-alarm 1 \
+  --dimensions Name=InstanceId,Value=i-002ee26984a2ef32b \
+  --region ap-south-1 \
+  --profile user1
+
+  #######################################
+
+
+
+  
