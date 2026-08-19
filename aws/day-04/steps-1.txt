@@ -35,6 +35,476 @@ aws cloudwatch put-metric-alarm \
 
 
   #######################################
+aws cloudwatch describe-alarms \
+  --alarm-names "EC2-High-CPU" \
+  --region ap-south-1 \
+  --profile user1 \
+  --query 'MetricAlarms[0].{Name:AlarmName,State:StateValue,Threshold:Threshold,Metric:MetricName}'
+
+###################################################
+
+for i in {1..2}; do while :; do :; done & done
+###############################
+
+pkill -f 'while :'
+
+########################################################
+
+aws events put-rule \
+  --name "EC2-High-CPU-Incident" \
+  --event-pattern '{
+    "source": ["aws.cloudwatch"],
+    "detail-type": ["CloudWatch Alarm State Change"],
+    "detail": {
+      "alarmName": ["EC2-High-CPU"],
+      "state": {
+        "value": ["ALARM"]
+      }
+    }
+  }' \
+  --state ENABLED \
+  --region ap-south-1 \
+  --profile user1
+
+
+
+###########################################################
+
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "events:PutRule",
+        "events:PutTargets",
+        "events:RemoveTargets",
+        "events:DeleteRule",
+        "events:DescribeRule",
+        "events:ListTargetsByRule"
+      ],
+      "Resource": "*"
+    }
+  ]
+}
+
+############################################
+
+
+nano app.py
+
+
+
+from flask import Flask, render_template, request, jsonify
+
+from agent.core import run_agent
+from tools.ssm.actions import kill_process
+
+
+app = Flask(__name__)
+
+
+# ==================================================
+# HOME PAGE
+# ==================================================
+
+@app.route("/")
+def home():
+
+    return render_template("index.html")
+
+
+# ==================================================
+# CHAT API
+# ==================================================
+
+@app.route("/chat", methods=["POST"])
+def chat():
+
+    data = request.get_json()
+
+    if not data:
+
+        return jsonify({
+            "error": "Invalid request"
+        }), 400
+
+    message = data.get("message", "").strip()
+
+    if not message:
+
+        return jsonify({
+            "error": "Message cannot be empty"
+        }), 400
+
+    try:
+
+        print()
+        print("========================================")
+        print("AWS DEVOPS AGENT")
+        print("========================================")
+
+        print("User message:")
+        print(message)
+
+        # ------------------------------------------
+        # Run Agent
+        # ------------------------------------------
+
+        answer = run_agent(
+            message,
+            session_id="default"
+        )
+
+        print()
+        print("========================================")
+        print("AGENT FINISHED")
+        print("========================================")
+
+        return jsonify({
+            "answer": answer
+        })
+
+    except Exception as e:
+
+        print()
+        print("========================================")
+        print("AGENT ERROR")
+        print("========================================")
+
+        print(e)
+
+        return jsonify({
+            "error": str(e)
+        }), 500
+
+
+# ==================================================
+# AUTOMATIC INCIDENT
+# CloudWatch Alarm -> EventBridge -> Flask
+# ==================================================
+
+@app.route("/incident", methods=["POST"])
+def incident():
+
+    print()
+    print("========================================")
+    print("AUTOMATIC INCIDENT RECEIVED")
+    print("========================================")
+
+    # ------------------------------------------
+    # Read EventBridge event
+    # ------------------------------------------
+
+    data = request.get_json(silent=True)
+
+    if not data:
+
+        print("No JSON event received.")
+
+        return jsonify({
+            "status": "error",
+            "message": "Invalid or empty event"
+        }), 400
+
+    print("EventBridge Event:")
+    print(data)
+
+    # ------------------------------------------
+    # Extract alarm information
+    # ------------------------------------------
+
+    detail = data.get("detail", {})
+
+    alarm_name = detail.get(
+        "alarmName",
+        "unknown"
+    )
+
+    state = detail.get(
+        "state",
+        {}
+    )
+
+    state_value = state.get(
+        "value",
+        "unknown"
+    )
+
+    reason = state.get(
+        "reason",
+        ""
+    )
+
+    print()
+    print("Alarm Name :", alarm_name)
+    print("State      :", state_value)
+    print("Reason     :", reason)
+
+    # ------------------------------------------
+    # Only process ALARM events
+    # ------------------------------------------
+
+    if state_value != "ALARM":
+
+        print("Event is not an ALARM event.")
+
+        return jsonify({
+            "status": "ignored",
+            "message": "Event is not an ALARM state"
+        }), 200
+
+    # ------------------------------------------
+    # Incident detected
+    # ------------------------------------------
+
+    print()
+    print("========================================")
+    print("INCIDENT DETECTED")
+    print("========================================")
+
+    print(
+        f"CloudWatch alarm '{alarm_name}' "
+        f"is in ALARM state."
+    )
+
+    # ------------------------------------------
+    # IMPORTANT:
+    # For now we DO NOT automatically call
+    # run_agent() or terminate anything.
+    #
+    # First we verify:
+    #
+    # CloudWatch
+    #     ↓
+    # EventBridge
+    #     ↓
+    # GCP Flask
+    #
+    # Once this works, we will connect
+    # the incident to run_agent().
+    # ------------------------------------------
+
+    return jsonify({
+
+        "status":
+            "incident_detected",
+
+        "alarm":
+            alarm_name,
+
+        "state":
+            state_value,
+
+        "message":
+            "CloudWatch incident received by AWS DevOps Agent."
+
+    }), 200
+
+
+# ==================================================
+# HUMAN APPROVAL
+# ==================================================
+
+@app.route("/approve-action", methods=["POST"])
+def approve_action():
+
+    data = request.get_json()
+
+    if not data:
+
+        return jsonify({
+            "error": "Invalid request"
+        }), 400
+
+    # ------------------------------------------
+    # Read approval information
+    # ------------------------------------------
+
+    approved = data.get("approved")
+
+    instance_id = data.get("instance_id")
+
+    pid = data.get("pid")
+
+    print()
+    print("========================================")
+    print("HUMAN APPROVAL REQUEST")
+    print("========================================")
+
+    print("Approved:", approved)
+    print("Instance:", instance_id)
+    print("PID:", pid)
+
+    # ------------------------------------------
+    # HUMAN SAID NO
+    # ------------------------------------------
+
+    if not approved:
+
+        print("Human rejected the action.")
+
+        return jsonify({
+
+            "status":
+                "rejected",
+
+            "message":
+                "Action rejected by human. No changes were made."
+
+        })
+
+    # ------------------------------------------
+    # VALIDATE INSTANCE
+    # ------------------------------------------
+
+    if not instance_id:
+
+        return jsonify({
+
+            "error":
+                "instance_id is required"
+
+        }), 400
+
+    # ------------------------------------------
+    # VALIDATE PID
+    # ------------------------------------------
+
+    if pid is None:
+
+        return jsonify({
+
+            "error":
+                "pid is required"
+
+        }), 400
+
+    try:
+
+        # ------------------------------------------
+        # Convert PID to integer
+        # ------------------------------------------
+
+        pid = int(pid)
+
+        # ------------------------------------------
+        # Safety check
+        # ------------------------------------------
+
+        if pid <= 0:
+
+            return jsonify({
+
+                "error":
+                    "Invalid PID"
+
+            }), 400
+
+        print()
+        print("========================================")
+        print("EXECUTING REMEDIATION")
+        print("========================================")
+
+        print(
+            f"Instance ID : {instance_id}"
+        )
+
+        print(
+            f"PID         : {pid}"
+        )
+
+        # ------------------------------------------
+        # Execute SSM command
+        # ------------------------------------------
+
+        result = kill_process(
+
+            instance_id,
+            pid
+
+        )
+
+        print()
+        print("SSM RESULT")
+        print(result)
+
+        # ------------------------------------------
+        # Return result
+        # ------------------------------------------
+
+        return jsonify({
+
+            "status":
+                "executed",
+
+            "message":
+                f"Termination command sent for PID {pid}.",
+
+            "result":
+                result
+
+        })
+
+    except ValueError:
+
+        return jsonify({
+
+            "error":
+                "PID must be a number."
+
+        }), 400
+
+    except Exception as e:
+
+        print()
+        print("========================================")
+        print("REMEDIATION ERROR")
+        print("========================================")
+
+        print(e)
+
+        return jsonify({
+
+            "status":
+                "failed",
+
+            "error":
+                str(e)
+
+        }), 500
+
+
+# ==================================================
+# START FLASK
+# ==================================================
+
+if __name__ == "__main__":
+
+    app.run(
+
+        host="0.0.0.0",
+
+        port=5000,
+
+        debug=True
+
+    )
+
+#########################################################################################################################################
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
   
