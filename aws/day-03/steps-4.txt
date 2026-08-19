@@ -1,4 +1,5 @@
 ######################################################################
+nano /home/arun/tools/ssm/terminate.py
 
 import boto3
 import time
