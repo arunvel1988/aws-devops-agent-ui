@@ -1,0 +1,9 @@
+#######################################
+
+
+sudo apt update
+sudo apt install -y stress-ng
+
+stress-ng --cpu 1 --timeout 5m
+
+Investigate my EC2 and tell me if anything is abnormal.
