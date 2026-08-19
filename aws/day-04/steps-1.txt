@@ -498,7 +498,21 @@ if __name__ == "__main__":
 
 
 
+curl -X POST http://127.0.0.1:5000/incident \
+  -H "Content-Type: application/json" \
+  -d '{
+    "source": "aws.cloudwatch",
+    "detail-type": "CloudWatch Alarm State Change",
+    "detail": {
+      "alarmName": "EC2-High-CPU",
+      "state": {
+        "value": "ALARM",
+        "reason": "CPU utilization exceeded 40 percent"
+      }
+    }
+  }'
 
+##############################################
 
 
 
