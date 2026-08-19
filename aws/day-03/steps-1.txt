@@ -61,6 +61,126 @@ ps -eo pid,ppid,user,%cpu,%mem,etime,comm,args --sort=-%cpu | head -n 11
 python3 -c "from tools.ssm.processes import get_top_processes; print(get_top_processes('i-002ee26984a2ef32b'))"
 ############################################
 
+sudo snap install amazon-ssm-agent --classic
+
+sudo systemctl enable --now snap.amazon-ssm-agent.amazon-ssm-agent.service
+
+##################################################################################
+
+
+AWS SSM SETUP FOR EC2
+========================
+
+Goal:
+Allow the AWS DevOps Agent running on the GCP VM to use AWS Systems Manager (SSM) to run commands on the EC2 instance.
+
+Current situation:
+- EC2 Ubuntu instance: i-002ee26984a2ef32b
+- Region: ap-south-1
+- SSM Agent: installed
+- SSM Agent: running
+- EC2 IAM role: NOT attached yet
+- AmazonSSMManagedInstanceCore: NOT attached yet
+
+
+STEP 1 — CREATE AN IAM ROLE
+---------------------------
+
+Go to AWS Console:
+
+IAM
+  -> Roles
+  -> Create role
+
+Select:
+
+Trusted entity:
+    AWS service
+
+Use case:
+    EC2
+
+Attach this AWS managed policy:
+
+    AmazonSSMManagedInstanceCore
+
+Role name:
+
+    EC2-SSM-Role
+
+Create the role.
+
+
+STEP 2 — ATTACH THE IAM ROLE TO EC2
+------------------------------------
+
+Go to:
+
+EC2
+  -> Instances
+  -> Select:
+       i-002ee26984a2ef32b
+
+Then:
+
+Actions
+  -> Security
+  -> Modify IAM role
+
+Select:
+
+    EC2-SSM-Role
+
+Save.
+
+
+STEP 3 — WAIT FOR SSM REGISTRATION
+----------------------------------
+
+Wait approximately 30–60 seconds.
+
+The SSM Agent is already running on the EC2, so after the IAM role is attached it should be able to register with Systems Manager.
+
+
+STEP 4 — CHECK FROM THE GCP VM
+------------------------------
+
+Run this on the GCP VM where the AWS DevOps Agent is running:
+
+aws ssm describe-instance-information   --region ap-south-1   --profile user1
+
+Expected result should contain:
+
+    "InstanceId": "i-002ee26984a2ef32b"
+
+and:
+
+    "PingStatus": "Online"
+
+
+STEP 5 — TEST THE PROCESS TOOL
+------------------------------
+
+Once PingStatus is Online, run on the GCP VM:
+
+python3 -c "from tools.ssm.processes import get_top_processes; print(get_top_processes('i-002ee26984a2ef32b'))"
+
+Expected result:
+
+- SSM command status: Success
+- Process information from the EC2
+- PID
+- CPU usage
+- Memory usage
+- Command/process name
+
+
+
+ps / process information
+
+
+#####################################################################################
+
 
 
     
