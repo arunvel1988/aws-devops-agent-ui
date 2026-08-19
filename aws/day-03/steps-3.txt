@@ -1,0 +1,7 @@
+###################################################################################
+   Investigate my EC2. If CPU is high, find the top CPU-consuming process and show me its PID and CPU usage. Do not terminate it.
+
+for i in {1..2}; do while true; do :; done & done
+
+#########################################################
+
