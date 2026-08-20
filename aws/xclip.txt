@@ -1,0 +1,6 @@
+sudo apt install xclip -y
+
+cat core.py | xclip -selection clipboard
+
+
+
