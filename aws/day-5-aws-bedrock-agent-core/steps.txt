@@ -1,0 +1,50 @@
+curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+
+sudo apt install -y nodejs
+
+node --version
+npm --version
+
+sudo apt install -y curl unzip
+
+curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+
+unzip awscliv2.zip
+
+sudo ./aws/install
+
+aws sts get-caller-identity
+
+npm install -g @aws/agentcore
+
+
+agentcore --help
+
+ docker buildx version
+
+
+mkdir ~/agentcore-docker
+cd ~/agentcore-docker
+
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+source ~/.bashrc
+
+ aws bedrock list-foundation-models \
+  --region us-east-1 \
+  --query "modelSummaries[?contains(providerName, 'OpenAI')].[modelId,modelName]" \
+  --output table
+-------------------------------------------------------------
+|                   ListFoundationModels                    |
++--------------------------------+--------------------------+
+|  openai.gpt-5.6-terra          |  GPT-5.6 Terra           |
+|  openai.gpt-oss-120b-1:0       |  gpt-oss-120b            |
+|  openai.gpt-oss-20b-1:0        |  gpt-oss-20b             |
+|  openai.gpt-oss-safeguard-120b |  GPT OSS Safeguard 120B  |
+|  openai.gpt-5.6-luna           |  GPT-5.6 Luna            |
+|  openai.gpt-5.6-sol            |  GPT-5.6 Sol             |
+|  openai.gpt-oss-safeguard-20b  |  GPT OSS Safeguard 20B   |
++--------------------------------+--------------------------+
+
+
+
