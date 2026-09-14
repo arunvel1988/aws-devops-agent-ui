@@ -76,6 +76,16 @@ export MODEL_ID="openai.gpt-5.6-luna"
 
 ##########
 
+agentcore dev
+
+agentcore deploy
+
+agentcore status
+
+agentcore invoke --prompt "Hello, what can you do?"
+
+
+
 
 
 
