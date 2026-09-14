@@ -55,5 +55,27 @@ python3 -m venv .venv
 source .venv/bin/activate
 
 pip install -U bedrock-agentcore boto3
+##############
+
+
+agentcore create \
+  --project-name DevOpsAgent \
+  --name DevOpsAgent \
+  --language Python \
+  --framework Strands \
+  --model-provider Bedrock \
+  --memory none \
+  --build CodeZip
+
+
+#########
+
+export AWS_REGION=us-east-1
+export MODEL_ID="openai.gpt-5.6-luna"
+
+
+##########
+
+
 
 
