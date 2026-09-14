@@ -9,3 +9,7 @@ source .venv/bin/activate
 pip install flask boto3
 
 #############
+
+nano templates/index.html
+
+
