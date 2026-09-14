@@ -107,7 +107,7 @@ app.add_middleware(
 
 REGION = os.getenv(
     "AWS_REGION",
-    "ap-south-1"
+    "us-east-1"
 )
 
 
