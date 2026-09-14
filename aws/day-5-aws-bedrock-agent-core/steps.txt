@@ -71,7 +71,7 @@ agentcore create \
 #########
 
 export AWS_REGION=us-east-1
-export MODEL_ID="amazon.nova-2-lite-v1:0"
+export MODEL_ID="us.amazon.nova-2-lite-v1:0"
 
 
 ##########
@@ -83,6 +83,25 @@ agentcore deploy
 agentcore status
 
 agentcore invoke --prompt "Hello, what can you do?"
+
+#################
+
+
+app/DevOpsAgent/model/load.py
+
+from strands.models.bedrock import BedrockModel
+
+
+def load_model() -> BedrockModel:
+    """Get Bedrock model client using IAM credentials."""
+    return BedrockModel(
+        model_id="us.amazon.nova-2-lite-v1:0"
+    )
+
+##############
+
+
+
 
 
 
