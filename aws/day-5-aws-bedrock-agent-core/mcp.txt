@@ -1,0 +1,25 @@
+#######
+
+
+cat ~/agentcore-docker/DevOpsAgent/app/DevOpsAgent/mcp_client/client.py
+
+from mcp import ClientSession
+from mcp.client.streamable_http import streamablehttp_client
+
+
+MCP_URL = "https://feae149afbd16904-1-8080.papa.r.killercoda.com/mcp"
+MCP_API_KEY = "my-super-secret-mcp-key"
+
+
+def get_streamable_http_mcp_client():
+
+    return streamablehttp_client(
+        MCP_URL,
+        headers={
+            "X-API-Key": MCP_API_KEY
+        },
+    )
+
+########
+
+
