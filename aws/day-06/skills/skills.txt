@@ -94,3 +94,4 @@ The application behind NGINX is returning HTTP 502 errors. Investigate the incid
 #####
 
 
+Investigate the current Nginx incident on my EC2 instance
