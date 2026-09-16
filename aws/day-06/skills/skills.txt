@@ -1,0 +1,96 @@
+
+
+########################
+
+sudo apt update
+sudo apt install -y nginx
+
+sudo systemctl status nginx
+
+mkdir -p ~/demo
+cd ~/demo
+
+python3 -m venv venv
+source venv/bin/activate
+
+pip install flask
+
+nano app.py
+
+from flask import Flask
+
+app = Flask(__name__)
+
+@app.route("/")
+def home():
+    return "Application is healthy\n"
+
+@app.route("/health")
+def health():
+    return "OK\n"
+
+app.run(
+    host="0.0.0.0",
+    port=5000
+)
+
+
+
+python app.py
+
+######
+
+sudo nano /etc/nginx/sites-available/default
+
+
+server {
+    listen 80;
+    listen [::]:80;
+
+    server_name _;
+
+    location / {
+        proxy_pass http://127.0.0.1:5000;
+
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    }
+}
+
+
+################################
+
+sudo nginx -t
+
+sudo systemctl restart nginx
+
+## stop flask app
+sudo tail -20 /var/log/nginx/error.log
+
+
+######
+
+
+nginx-incident-investigation
+
+
+ONLY inspect:
+
+/var/log/nginx/access.log
+/var/log/nginx/error.log
+
+DO NOT inspect:
+
+/var/log/nginx/*.log.1
+/var/log/nginx/*.gz
+/var/log/syslog
+/var/log/auth.log
+
+#########
+
+The application behind NGINX is returning HTTP 502 errors. Investigate the incident and identify the root cause
+
+#####
+
+
