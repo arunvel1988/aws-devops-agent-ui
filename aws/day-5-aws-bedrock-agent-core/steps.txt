@@ -54,7 +54,7 @@ source ~/.bashrc
 python3 -m venv .venv
 source .venv/bin/activate
 
-pip install -U bedrock-agentcore boto3
+pip install -U flask bedrock-agentcore boto3
 ##############
 
 
