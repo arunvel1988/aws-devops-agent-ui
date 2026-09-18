@@ -1,3 +1,4 @@
+ cat app.py 
 import json
 import uuid
 
@@ -51,6 +52,159 @@ def index():
 
 
 # ============================================================
+# Extract text from AgentCore SSE stream
+# ============================================================
+
+def extract_agentcore_text(response):
+
+    stream = response.get("response")
+
+    if stream is None:
+
+        return ""
+
+
+    answer = []
+
+
+    # ========================================================
+    # AgentCore returns text/event-stream
+    # ========================================================
+
+    for line in stream.iter_lines():
+
+        if not line:
+
+            continue
+
+
+        # ----------------------------------------------------
+        # Convert bytes to string
+        # ----------------------------------------------------
+
+        if isinstance(
+            line,
+            bytes
+        ):
+
+            line = line.decode(
+                "utf-8",
+                errors="ignore"
+            )
+
+
+        line = line.strip()
+
+
+        # ----------------------------------------------------
+        # Ignore anything that isn't an SSE data line
+        # ----------------------------------------------------
+
+        if not line.startswith(
+            "data:"
+        ):
+
+            continue
+
+
+        # ----------------------------------------------------
+        # Remove "data:"
+        # ----------------------------------------------------
+
+        json_data = line[
+            5:
+        ].strip()
+
+
+        if not json_data:
+
+            continue
+
+
+        # ----------------------------------------------------
+        # Convert JSON string into Python dictionary
+        # ----------------------------------------------------
+
+        try:
+
+            event = json.loads(
+                json_data
+            )
+
+        except json.JSONDecodeError:
+
+            print(
+                "Could not parse:",
+                json_data
+            )
+
+            continue
+
+
+        # ----------------------------------------------------
+        # Get event
+        # ----------------------------------------------------
+
+        event_body = event.get(
+            "event"
+        )
+
+        if not event_body:
+
+            continue
+
+
+        # ----------------------------------------------------
+        # Get contentBlockDelta
+        # ----------------------------------------------------
+
+        content_block_delta = event_body.get(
+            "contentBlockDelta"
+        )
+
+        if not content_block_delta:
+
+            continue
+
+
+        # ----------------------------------------------------
+        # Get delta
+        # ----------------------------------------------------
+
+        delta = content_block_delta.get(
+            "delta"
+        )
+
+        if not delta:
+
+            continue
+
+
+        # ----------------------------------------------------
+        # Get actual AI text
+        # ----------------------------------------------------
+
+        text = delta.get(
+            "text"
+        )
+
+        if text:
+
+            answer.append(
+                text
+            )
+
+
+    # ========================================================
+    # Combine all chunks
+    # ========================================================
+
+    return "".join(
+        answer
+    )
+
+
+# ============================================================
 # Chat API
 # ============================================================
 
@@ -62,14 +216,26 @@ def chat():
 
     try:
 
+        # ====================================================
+        # Get request JSON
+        # ====================================================
+
         data = request.get_json()
+
 
         if not data:
 
             return jsonify({
-                "error": "No JSON payload received"
+
+                "error":
+                    "No JSON payload received"
+
             }), 400
 
+
+        # ====================================================
+        # Get user message
+        # ====================================================
 
         prompt = data.get(
             "message",
@@ -80,13 +246,16 @@ def chat():
         if not prompt.strip():
 
             return jsonify({
-                "error": "Message cannot be empty"
+
+                "error":
+                    "Message cannot be empty"
+
             }), 400
 
 
-        # ----------------------------------------------------
-        # Create / receive session ID
-        # ----------------------------------------------------
+        # ====================================================
+        # Session ID
+        # ====================================================
 
         session_id = data.get(
             "session_id"
@@ -100,14 +269,22 @@ def chat():
             )
 
 
-        # ----------------------------------------------------
-        # Invoke AgentCore Runtime
-        # ----------------------------------------------------
+        # ====================================================
+        # Create AgentCore payload
+        # ====================================================
 
         payload = json.dumps({
-            "prompt": prompt
-        }).encode("utf-8")
 
+            "prompt": prompt
+
+        }).encode(
+            "utf-8"
+        )
+
+
+        # ====================================================
+        # Invoke AgentCore Runtime
+        # ====================================================
 
         response = agentcore.invoke_agent_runtime(
 
@@ -118,81 +295,89 @@ def chat():
             payload=payload,
 
             qualifier="DEFAULT",
+
         )
 
 
-        # ----------------------------------------------------
-        # AgentCore returns streaming chunks
-        # ----------------------------------------------------
+        # ====================================================
+        # Debug information
+        # ====================================================
 
-        chunks = []
+        print()
+        print("=" * 70)
+        print("AGENTCORE")
+        print("=" * 70)
 
-
-        for chunk in response.get(
-            "response",
-            [],
-        ):
-
-            if isinstance(
-                chunk,
-                bytes,
-            ):
-
-                chunks.append(
-                    chunk.decode("utf-8")
-                )
-
-            else:
-
-                chunks.append(
-                    str(chunk)
-                )
-
-
-        raw_response = "".join(
-            chunks
-        )
-
-
-        # ----------------------------------------------------
-        # Try JSON response
-        # ----------------------------------------------------
-
-        try:
-
-            result = json.loads(
-                raw_response
+        print(
+            "Status:",
+            response.get(
+                "statusCode"
             )
+        )
 
-        except json.JSONDecodeError:
+        print(
+            "Content-Type:",
+            response.get(
+                "contentType"
+            )
+        )
 
-            result = {
-                "message": raw_response
-            }
+        print("=" * 70)
+        print()
 
 
-        # ----------------------------------------------------
-        # Return response to browser
-        # ----------------------------------------------------
+        # ====================================================
+        # Extract ONLY AI text
+        # ====================================================
+
+        answer = extract_agentcore_text(
+            response
+        )
+
+
+        # ====================================================
+        # Debug final answer
+        # ====================================================
+
+        print()
+        print("=" * 70)
+        print("FINAL AI RESPONSE")
+        print("=" * 70)
+        print(answer)
+        print("=" * 70)
+        print()
+
+
+        # ====================================================
+        # Return clean response
+        # ====================================================
 
         return jsonify({
 
-            "session_id": session_id,
+            "session_id":
+                session_id,
 
-            "response": result,
+            "response":
+                answer,
 
         })
 
 
     except Exception as e:
 
+        # ====================================================
+        # Log error
+        # ====================================================
+
         app.logger.exception(
             "AgentCore invocation failed"
         )
 
+
         return jsonify({
 
-            "error": str(e)
+            "error":
+                str(e)
 
         }), 500
 
@@ -204,7 +389,13 @@ def chat():
 if __name__ == "__main__":
 
     app.run(
+
         host="0.0.0.0",
+
         port=5000,
+
         debug=True,
+
+        use_reloader=False,
+
     )
