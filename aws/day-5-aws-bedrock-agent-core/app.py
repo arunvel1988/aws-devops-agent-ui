@@ -60,14 +60,22 @@ def extract_agentcore_text(response):
 
     if stream is None:
 
+        print("ERROR: AgentCore response stream is None")
+
         return ""
 
 
     answer = []
 
 
+    print()
+    print("=" * 70)
+    print("RAW AGENTCORE SSE EVENTS")
+    print("=" * 70)
+
+
     # ========================================================
-    # AgentCore returns text/event-stream
+    # Read AgentCore SSE stream
     # ========================================================
 
     for line in stream.iter_lines():
@@ -96,7 +104,17 @@ def extract_agentcore_text(response):
 
 
         # ----------------------------------------------------
-        # Ignore anything that isn't an SSE data line
+        # DEBUG
+        # ----------------------------------------------------
+
+        print(
+            "RAW SSE:",
+            repr(line)
+        )
+
+
+        # ----------------------------------------------------
+        # Ignore non-data SSE lines
         # ----------------------------------------------------
 
         if not line.startswith(
@@ -121,7 +139,7 @@ def extract_agentcore_text(response):
 
 
         # ----------------------------------------------------
-        # Convert JSON string into Python dictionary
+        # Parse JSON
         # ----------------------------------------------------
 
         try:
@@ -130,10 +148,15 @@ def extract_agentcore_text(response):
                 json_data
             )
 
-        except json.JSONDecodeError:
+        except json.JSONDecodeError as e:
 
             print(
-                "Could not parse:",
+                "JSON PARSE ERROR:",
+                e
+            )
+
+            print(
+                "JSON DATA:",
                 json_data
             )
 
@@ -141,66 +164,127 @@ def extract_agentcore_text(response):
 
 
         # ----------------------------------------------------
-        # Get event
+        # DEBUG EVENT
+        # ----------------------------------------------------
+
+        print(
+            "PARSED EVENT:",
+            json.dumps(
+                event,
+                indent=2
+            )
+        )
+
+
+        # ----------------------------------------------------
+        # Get event body
         # ----------------------------------------------------
 
         event_body = event.get(
             "event"
         )
 
+
         if not event_body:
 
             continue
 
 
-        # ----------------------------------------------------
-        # Get contentBlockDelta
-        # ----------------------------------------------------
+        # ====================================================
+        # contentBlockDelta
+        # ====================================================
 
         content_block_delta = event_body.get(
             "contentBlockDelta"
         )
 
-        if not content_block_delta:
 
-            continue
+        if content_block_delta:
 
-
-        # ----------------------------------------------------
-        # Get delta
-        # ----------------------------------------------------
-
-        delta = content_block_delta.get(
-            "delta"
-        )
-
-        if not delta:
-
-            continue
-
-
-        # ----------------------------------------------------
-        # Get actual AI text
-        # ----------------------------------------------------
-
-        text = delta.get(
-            "text"
-        )
-
-        if text:
-
-            answer.append(
-                text
+            delta = content_block_delta.get(
+                "delta"
             )
 
 
+            if delta:
+
+                text = delta.get(
+                    "text"
+                )
+
+
+                if text:
+
+                    print(
+                        "TEXT CHUNK:",
+                        repr(text)
+                    )
+
+
+                    answer.append(
+                        text
+                    )
+
+
+        # ====================================================
+        # messageStop
+        # ====================================================
+
+        message_stop = event_body.get(
+            "messageStop"
+        )
+
+
+        if message_stop:
+
+            print(
+                "MESSAGE STOP:",
+                message_stop
+            )
+
+
+        # ====================================================
+        # Metadata
+        # ====================================================
+
+        metadata = event_body.get(
+            "metadata"
+        )
+
+
+        if metadata:
+
+            print(
+                "METADATA:",
+                json.dumps(
+                    metadata,
+                    indent=2
+                )
+            )
+
+
+    print("=" * 70)
+    print("END RAW AGENTCORE SSE EVENTS")
+    print("=" * 70)
+
+
     # ========================================================
-    # Combine all chunks
+    # Combine response
     # ========================================================
 
-    return "".join(
+    final_answer = "".join(
         answer
     )
+
+
+    print()
+    print(
+        "EXTRACTED ANSWER:",
+        repr(final_answer)
+    )
+
+
+    return final_answer
 
 
 # ============================================================
@@ -216,7 +300,7 @@ def chat():
     try:
 
         # ====================================================
-        # Get request JSON
+        # Get JSON
         # ====================================================
 
         data = request.get_json()
@@ -240,6 +324,19 @@ def chat():
             "message",
             "",
         )
+
+
+        if not isinstance(
+            prompt,
+            str
+        ):
+
+            return jsonify({
+
+                "error":
+                    "Message must be a string"
+
+            }), 400
 
 
         if not prompt.strip():
@@ -282,8 +379,31 @@ def chat():
 
 
         # ====================================================
-        # Invoke AgentCore Runtime
+        # Invoke AgentCore
         # ====================================================
+
+        print()
+        print("=" * 70)
+        print("CALLING AGENTCORE")
+        print("=" * 70)
+
+        print(
+            "Runtime ARN:",
+            AGENT_RUNTIME_ARN
+        )
+
+        print(
+            "Session ID:",
+            session_id
+        )
+
+        print(
+            "Prompt:",
+            prompt
+        )
+
+        print("=" * 70)
+
 
         response = agentcore.invoke_agent_runtime(
 
@@ -299,12 +419,12 @@ def chat():
 
 
         # ====================================================
-        # Debug information
+        # AgentCore response information
         # ====================================================
 
         print()
         print("=" * 70)
-        print("AGENTCORE")
+        print("AGENTCORE RESPONSE")
         print("=" * 70)
 
         print(
@@ -322,11 +442,10 @@ def chat():
         )
 
         print("=" * 70)
-        print()
 
 
         # ====================================================
-        # Extract ONLY AI text
+        # Extract AI response
         # ====================================================
 
         answer = extract_agentcore_text(
@@ -335,20 +454,24 @@ def chat():
 
 
         # ====================================================
-        # Debug final answer
+        # Final response
         # ====================================================
 
         print()
         print("=" * 70)
         print("FINAL AI RESPONSE")
         print("=" * 70)
-        print(answer)
+
+        print(
+            repr(answer)
+        )
+
         print("=" * 70)
         print()
 
 
         # ====================================================
-        # Return clean response
+        # Return response to browser
         # ====================================================
 
         return jsonify({
@@ -365,7 +488,7 @@ def chat():
     except Exception as e:
 
         # ====================================================
-        # Log error
+        # Error handling
         # ====================================================
 
         app.logger.exception(
