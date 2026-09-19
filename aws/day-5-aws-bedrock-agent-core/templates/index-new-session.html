@@ -1,8 +1,14 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0"
+    >
+
     <title>AWS DevOps Agent</title>
 
     <style>
@@ -72,7 +78,7 @@
             justify-content: center;
             background: #444;
             flex-shrink: 0;
-            font-size: 12px;
+            font-size: 11px;
             font-weight: bold;
         }
 
@@ -103,7 +109,10 @@
             bottom: 0;
             left: 0;
             right: 0;
-            background: linear-gradient(transparent, #212121 20%);
+            background: linear-gradient(
+                transparent,
+                #212121 20%
+            );
             padding: 25px 20px 20px;
         }
 
@@ -132,7 +141,7 @@
             font-family: inherit;
         }
 
-        button {
+        #send {
             width: 42px;
             height: 42px;
             border: none;
@@ -144,7 +153,7 @@
             font-size: 18px;
         }
 
-        button:disabled {
+        #send:disabled {
             opacity: 0.5;
             cursor: not-allowed;
         }
@@ -156,28 +165,57 @@
     </style>
 </head>
 
+
 <body>
 
-    <div class="header">
-        <div>AWS DevOps Agent</div>
+    <!-- ================================================= -->
+    <!-- HEADER                                            -->
+    <!-- ================================================= -->
 
-        <button id="newSession" onclick="newSession()">
+    <div class="header">
+
+        <div>
+            AWS DevOps Agent
+        </div>
+
+        <button
+            id="newSession"
+            type="button"
+        >
             New Session
         </button>
+
     </div>
 
-    <div id="chat" class="chat-container">
+
+    <!-- ================================================= -->
+    <!-- CHAT                                              -->
+    <!-- ================================================= -->
+
+    <div
+        id="chat"
+        class="chat-container"
+    >
 
         <div class="message assistant">
-            <div class="avatar">AI</div>
+
+            <div class="avatar">
+                AI
+            </div>
 
             <div class="content">
                 Hello. I'm your AWS DevOps Agent.
                 How can I help you?
             </div>
+
         </div>
 
     </div>
+
+
+    <!-- ================================================= -->
+    <!-- INPUT                                             -->
+    <!-- ================================================= -->
 
     <div class="input-area">
 
@@ -189,7 +227,10 @@
                 rows="1"
             ></textarea>
 
-            <button id="send" onclick="sendMessage()">
+            <button
+                id="send"
+                type="button"
+            >
                 ↑
             </button>
 
@@ -197,13 +238,28 @@
 
     </div>
 
+
 <script>
 
+    /* ================================================= */
+    /* AGENTCORE SESSION                                 */
+    /* ================================================= */
+
     let sessionId =
-        localStorage.getItem("agentcore_session_id");
+        localStorage.getItem(
+            "agentcore_session_id"
+        );
+
+
+    /*
+     * Create the first browser session
+     * if one does not already exist.
+     */
 
     if (!sessionId) {
-        sessionId = crypto.randomUUID();
+
+        sessionId =
+            crypto.randomUUID();
 
         localStorage.setItem(
             "agentcore_session_id",
@@ -212,99 +268,273 @@
     }
 
 
-    function addMessage(text, type) {
+    console.log(
+        "CURRENT SESSION ID:",
+        sessionId
+    );
+
+
+    /* ================================================= */
+    /* ADD MESSAGE                                       */
+    /* ================================================= */
+
+    function addMessage(
+        text,
+        type
+    ) {
 
         const chat =
-            document.getElementById("chat");
+            document.getElementById(
+                "chat"
+            );
+
 
         const message =
-            document.createElement("div");
+            document.createElement(
+                "div"
+            );
+
 
         message.className =
             "message " + type;
 
-        const avatar =
-            document.createElement("div");
 
-        avatar.className = "avatar";
+        const avatar =
+            document.createElement(
+                "div"
+            );
+
+
+        avatar.className =
+            "avatar";
+
 
         avatar.textContent =
-            type === "user" ? "YOU" : "AI";
+            type === "user"
+                ? "YOU"
+                : "AI";
+
 
         const content =
-            document.createElement("div");
+            document.createElement(
+                "div"
+            );
 
-        content.className = "content";
 
-        content.textContent = text;
+        content.className =
+            "content";
 
-        message.appendChild(avatar);
-        message.appendChild(content);
 
-        chat.appendChild(message);
+        content.textContent =
+            text;
 
-        chat.scrollTop = chat.scrollHeight;
+
+        message.appendChild(
+            avatar
+        );
+
+
+        message.appendChild(
+            content
+        );
+
+
+        chat.appendChild(
+            message
+        );
+
+
+        chat.scrollTop =
+            chat.scrollHeight;
+
 
         return content;
     }
 
 
-    function newSession() {
+    /* ================================================= */
+    /* NEW SESSION                                       */
+    /* ================================================= */
 
-        /*
-         * Keep all old messages visible.
-         * Only change the AgentCore session ID.
-         */
+    async function newSession() {
 
-        sessionId = crypto.randomUUID();
-
-        localStorage.setItem(
-            "agentcore_session_id",
-            sessionId
+        console.log(
+            "NEW SESSION BUTTON CLICKED"
         );
 
-        const chat =
-            document.getElementById("chat");
 
-        const separator =
-            document.createElement("div");
+        try {
 
-        separator.className =
-            "session-separator";
+            /*
+             * Ask Flask to create
+             * a new AgentCore session.
+             */
 
-        separator.textContent =
-            "──────── NEW SESSION ────────";
+            const response =
+                await fetch(
+                    "/new-session",
+                    {
+                        method: "POST",
 
-        chat.appendChild(separator);
+                        headers: {
+                            "Content-Type":
+                                "application/json"
+                        }
+                    }
+                );
 
-        chat.scrollTop = chat.scrollHeight;
 
-        document
-            .getElementById("message")
-            .focus();
+            console.log(
+                "NEW SESSION STATUS:",
+                response.status
+            );
+
+
+            const data =
+                await response.json();
+
+
+            console.log(
+                "NEW SESSION RESPONSE:",
+                data
+            );
+
+
+            if (!response.ok) {
+
+                throw new Error(
+                    data.error ||
+                    "Failed to create new session"
+                );
+            }
+
+
+            /*
+             * Replace the current
+             * AgentCore runtime session.
+             */
+
+            sessionId =
+                data.session_id;
+
+
+            localStorage.setItem(
+                "agentcore_session_id",
+                sessionId
+            );
+
+
+            /*
+             * Do NOT clear old messages.
+             *
+             * The UI keeps the history visible,
+             * but all future requests use
+             * the NEW AgentCore session ID.
+             */
+
+            const chat =
+                document.getElementById(
+                    "chat"
+                );
+
+
+            const separator =
+                document.createElement(
+                    "div"
+                );
+
+
+            separator.className =
+                "session-separator";
+
+
+            separator.textContent =
+                "──────── NEW SESSION ────────";
+
+
+            chat.appendChild(
+                separator
+            );
+
+
+            chat.scrollTop =
+                chat.scrollHeight;
+
+
+            document
+                .getElementById(
+                    "message"
+                )
+                .focus();
+
+
+            console.log(
+                "NEW AGENTCORE SESSION ID:",
+                sessionId
+            );
+
+        } catch (error) {
+
+            console.error(
+                "NEW SESSION ERROR:",
+                error
+            );
+
+
+            alert(
+                "New Session failed: " +
+                error.message
+            );
+        }
     }
 
+
+    /* ================================================= */
+    /* SEND MESSAGE                                      */
+    /* ================================================= */
 
     async function sendMessage() {
 
         const textarea =
-            document.getElementById("message");
+            document.getElementById(
+                "message"
+            );
 
-        const button =
-            document.getElementById("send");
+
+        const sendButton =
+            document.getElementById(
+                "send"
+            );
+
 
         const message =
             textarea.value.trim();
+
 
         if (!message) {
             return;
         }
 
-        addMessage(message, "user");
+
+        /*
+         * Display user's message.
+         */
+
+        addMessage(
+            message,
+            "user"
+        );
+
 
         textarea.value = "";
 
-        button.disabled = true;
+
+        sendButton.disabled = true;
+
+
+        /*
+         * Temporary assistant message.
+         */
 
         const responseElement =
             addMessage(
@@ -312,28 +542,48 @@
                 "assistant"
             );
 
-        responseElement.classList.add("typing");
+
+        responseElement.classList.add(
+            "typing"
+        );
+
 
         try {
 
+            /*
+             * Send both:
+             *
+             * message
+             * session_id
+             *
+             * to Flask.
+             */
+
             const response =
-                await fetch("/chat", {
+                await fetch(
+                    "/chat",
+                    {
 
-                    method: "POST",
+                        method: "POST",
 
-                    headers: {
-                        "Content-Type":
-                            "application/json"
-                    },
+                        headers: {
+                            "Content-Type":
+                                "application/json"
+                        },
 
-                    body: JSON.stringify({
+                        body:
+                            JSON.stringify({
 
-                        message: message,
+                                message:
+                                    message,
 
-                        session_id:
-                            sessionId
-                    })
-                });
+                                session_id:
+                                    sessionId
+
+                            })
+
+                    }
+                );
 
 
             const data =
@@ -349,28 +599,47 @@
             }
 
 
-            sessionId =
-                data.session_id;
+            /*
+             * Flask returns the
+             * AgentCore session ID.
+             */
+
+            if (data.session_id) {
+
+                sessionId =
+                    data.session_id;
 
 
-            localStorage.setItem(
-                "agentcore_session_id",
-                sessionId
-            );
+                localStorage.setItem(
+                    "agentcore_session_id",
+                    sessionId
+                );
+            }
 
 
-            responseElement.classList.remove(
-                "typing"
-            );
+            responseElement
+                .classList.remove(
+                    "typing"
+                );
 
 
             let answer =
                 data.response;
 
 
-            if (typeof answer === "object") {
+            /*
+             * Handle JSON responses
+             * safely.
+             */
 
-                if (answer.message) {
+            if (
+                typeof answer ===
+                "object"
+            ) {
+
+                if (
+                    answer.message
+                ) {
 
                     answer =
                         answer.message;
@@ -393,29 +662,66 @@
 
         } catch (error) {
 
-            responseElement.classList.remove(
-                "typing"
-            );
+            responseElement
+                .classList.remove(
+                    "typing"
+                );
+
 
             responseElement.textContent =
-                "Error: " + error.message;
+                "Error: " +
+                error.message;
+
         }
 
 
-        button.disabled = false;
+        sendButton.disabled = false;
+
 
         textarea.focus();
     }
 
 
+    /* ================================================= */
+    /* BUTTON EVENTS                                     */
+    /* ================================================= */
+
     document
-        .getElementById("message")
+        .getElementById(
+            "newSession"
+        )
+        .addEventListener(
+            "click",
+            newSession
+        );
+
+
+    document
+        .getElementById(
+            "send"
+        )
+        .addEventListener(
+            "click",
+            sendMessage
+        );
+
+
+    /* ================================================= */
+    /* ENTER TO SEND                                     */
+    /* SHIFT + ENTER = NEW LINE                          */
+    /* ================================================= */
+
+    document
+        .getElementById(
+            "message"
+        )
         .addEventListener(
             "keydown",
             function(event) {
 
                 if (
-                    event.key === "Enter" &&
+                    event.key === "Enter"
+                    &&
                     !event.shiftKey
                 ) {
 
@@ -423,10 +729,13 @@
 
                     sendMessage();
                 }
+
             }
         );
 
 </script>
 
+
 </body>
+
 </html>
