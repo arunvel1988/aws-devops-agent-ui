@@ -1,4 +1,3 @@
- cat app.py 
 import json
 import uuid
 
