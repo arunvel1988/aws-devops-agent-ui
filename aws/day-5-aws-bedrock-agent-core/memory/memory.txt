@@ -1,0 +1,37 @@
+##############################################################
+
+AGENTCORE MEMORY 
+
+
+agentcore add memory \
+  --name DevOpsMemory \
+  --strategies SEMANTIC,SUMMARIZATION,USER_PREFERENCE
+
+agentcore deploy
+
+mkdir -p memory
+nano memory/session.py
+
+
+
+agentcore status
+
+
+
+export MEMORY_DEVOPSMEMORY_ID="DevOpsAgent_DevOpsMemory-siGral72J4"
+
+export MEMORY_ACTOR_ID="demo-user"
+
+
+echo 'export MEMORY_ACTOR_ID="demo-user"' >> ~/.bashrc
+source ~/.bashrc
+
+
+
+My preferred DevOps tool is Docker Compose. I prefer it over Helm for my classroom labs. Please remember this preference.
+
+
+What DevOps tools do I prefer?
+
+
+##############################################################
