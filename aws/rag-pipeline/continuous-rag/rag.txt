@@ -36,5 +36,20 @@ curl -i -X POST http://localhost:8080/mcp \
   }'
 
 ###################################################
+export MCP_SESSION_ID="4c3d48d7975f4e00886eedcd28632556"
+
+curl -i -X POST http://localhost:8080/mcp \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -H "Mcp-Session-Id: $MCP_SESSION_ID" \
+  -d '{
+    "jsonrpc":"2.0",
+    "id":2,
+    "method":"tools/list",
+    "params":{}
+  }'
+#############################################
+
+
 
 
