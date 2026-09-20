@@ -11,4 +11,12 @@ curl -s http://localhost:8000/query \
 cp my-new-runbook.pdf documents/runbooks/
 
 
+docker compose logs -f rag-api
+
+curl -s http://localhost:8000/query \
+  -H 'Content-Type: application/json' \
+  -d '{"question":"What should I do if the ecommerce application has database connection pool exhaustion?","top_k":5}'
+
+#########################################################
+
 
