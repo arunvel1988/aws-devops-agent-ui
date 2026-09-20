@@ -21,6 +21,7 @@ services:
       WATCH_DIR: /data/documents
       CHUNK_SIZE: "800"
       CHUNK_OVERLAP: "120"
+      SCAN_INTERVAL: "5"
     volumes:
       - ./documents:/data/documents
       - hf_cache:/root/.cache/huggingface
