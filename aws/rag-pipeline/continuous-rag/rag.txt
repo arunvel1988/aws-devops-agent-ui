@@ -1,0 +1,14 @@
+#########################################################
+
+
+curl http://localhost:8000/health
+
+curl -s http://localhost:8000/query \
+  -H 'Content-Type: application/json' \
+  -d '{"question":"What should I do when CPU is high on an EC2 instance?","top_k":5}'
+
+
+cp my-new-runbook.pdf documents/runbooks/
+
+
+
