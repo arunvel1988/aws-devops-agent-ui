@@ -1,0 +1,8 @@
+fastapi
+uvicorn[standard]
+qdrant-client
+sentence-transformers
+watchdog
+pypdf
+python-docx
+python-multipart
