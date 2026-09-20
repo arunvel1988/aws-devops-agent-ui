@@ -11,15 +11,15 @@ logger = logging.getLogger(__name__)
 # AWS MCP SERVER
 # ============================================================
 
-AWS_MCP_SERVER_URL = "http://YOUR_AWS_MCP_SERVER/mcp"
-AWS_MCP_API_KEY = "your-aws-mcp-key"
+AWS_MCP_SERVER_URL = "http://8.231.68.216:8080/mcp"
+AWS_MCP_API_KEY = "my-super-secret-mcp-key"
 
 
 # ============================================================
 # RAG MCP SERVER
 # ============================================================
 
-RAG_MCP_SERVER_URL = "http://8.231.68.216:8080/mcp"
+RAG_MCP_SERVER_URL = "http://8.231.68.216:8081/mcp"
 RAG_MCP_API_KEY = "my-super-secret-mcp-key"
 
 
