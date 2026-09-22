@@ -19,3 +19,15 @@ To trigger security_audit:
 "Are there any security issues with how this server is configured?"
 "Check if the server is running as root or has any exposed sockets."
 ##################################################################
+
+######### MCP SERVER HTTPS ######################
+cd ~;curl -L https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -o cloudflared;ls -ltr
+
+chmod +x cloudflared;sudo mv cloudflared /usr/local/bin/;cloudflared --version
+
+nohup cloudflared tunnel --url http://localhost:8080 > cloudflared.log 2>&1 &
+
+ps -ef | grep cloudflared;head -10 cloudflared.log
+######### MCP SERVER HTTPS ######################
+
+
