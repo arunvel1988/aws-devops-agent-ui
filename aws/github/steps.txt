@@ -28,6 +28,13 @@ sudo chmod 600 /home/arun/.ssh/authorized_keys
 
 ssh -i ~/.ssh/github-arun arun@YOUR_EC2_PUBLIC_IP
 
+##############################################
+cat ~/.ssh/github-arun
+
+### copy this github private key
+##############################################
+
+
 
 
 
